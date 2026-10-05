@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow">
+<title>Área de devs</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=Figtree:wght@400;500;600;700&display=swap">
+<link rel="stylesheet" href="/css/app.css">
+</head>
+<body>
+<div class="wrap wide">
+  <div id="v-login" hidden>
+    <div class="login">
+      <span class="dev-flag">Área de devs</span>
+      <h1>Entrar</h1>
+      <p class="sub">Acesso restrito à equipe que mantém a plataforma.</p>
+      <form id="f-login" class="card" novalidate>
+        <label for="l-email">E-mail</label><input id="l-email" type="email" autocomplete="username">
+        <label for="l-senha">Senha</label><input id="l-senha" type="password" autocomplete="current-password">
+        <div id="l-erro" class="erro" hidden></div>
+        <div class="row"><button class="btn" type="submit" id="l-btn">Entrar</button><button class="btn ghost" type="button" id="l-esqueci" aria-expanded="false" aria-controls="l-ajuda">Esqueci minha senha</button></div>
+        <div id="l-ajuda" class="note" hidden></div>
+      </form>
+    </div>
+  </div>
+  <div id="v-app" hidden>
+    <header class="pro-head" id="head"></header>
+    <div class="tabs" role="tablist" id="tabs"></div>
+    <div class="pane" id="pane"></div>
+  </div>
+</div>
+<div class="toast" id="toast" role="status" hidden></div>
+<script src="/js/comum.js"></script>
+<script src="/js/admin.js"></script>
+</body>
+</html>

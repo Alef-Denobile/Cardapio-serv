@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>ChefOnline</title>
+<meta name="description" content="Peça nos restaurantes da sua cidade: promoções, cardápios e entrega acompanhada em tempo real.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap">
+<link rel="stylesheet" href="/css/chef.css">
+</head>
+<body>
+
+
+<header class="top">
+  <div class="wrap">
+    <button class="logo" data-go="home" aria-label="ChefOnline, ir para o início">
+      <svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 30c-5 0-8-4-8-8s4-8 8-7c1-5 5-8 10-8s9 3 10 8c4-1 8 3 8 7s-3 8-8 8"/><path d="M14 30v10h20V30"/><path d="M14 35h20"/></svg>
+      <b>Chef</b><i>Online</i>
+    </button>
+    <div class="busca">
+      <input id="busca" type="search" placeholder="Pesquise sua comida favorita…" autocomplete="off" aria-label="Pesquisar pratos e restaurantes">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg>
+      <div class="sugest" id="sugest" hidden></div>
+    </div>
+    <nav class="nav" aria-label="Principal">
+      <button class="so-desk" data-go="home"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M3 11 12 3l9 8"/><path d="M5 10v10h5v-6h4v6h5V10"/></svg><span class="lbl">Home</span></button>
+      <button class="so-desk" data-go="cardapio"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 16a8 8 0 0 1 16 0"/><path d="M2 16h20M12 6V4M10 4h4M6 20h12"/></svg><span class="lbl">Cardápio</span></button>
+      <button class="so-desk" data-go="pedidos"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M6 3h12v18l-2-1.5-2 1.5-2-1.5-2 1.5-2-1.5L6 21z"/><path d="M9 8h6M9 12h6M9 16h3"/></svg><span class="lbl">Pedidos</span></button>
+      <button data-go="carrinho" aria-label="Carrinho"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M2 4h3l2.5 11h11L21 7H6.2"/><circle cx="9" cy="19.5" r="1.5"/><circle cx="17" cy="19.5" r="1.5"/></svg><span class="lbl">Carrinho</span><span class="cnt" id="cnt" hidden></span></button>
+    </nav>
+  </div>
+</header>
+
+<main class="wrap" id="app"><p class="carregando">Carregando os restaurantes…</p></main>
+
+<footer><div class="wrap"><span>ChefOnline · pedidos direto com os restaurantes da sua cidade</span><span><a href="/painel">Área do restaurante</a></span></div></footer>
+
+<nav class="bnav" aria-label="Principal">
+  <button data-go="home"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M3 11 12 3l9 8"/><path d="M5 10v10h5v-6h4v6h5V10"/></svg>Home</button>
+  <button data-go="cardapio"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 16a8 8 0 0 1 16 0"/><path d="M2 16h20M12 6V4M10 4h4M6 20h12"/></svg>Cardápio</button>
+  <button data-go="carrinho"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M2 4h3l2.5 11h11L21 7H6.2"/><circle cx="9" cy="19.5" r="1.5"/><circle cx="17" cy="19.5" r="1.5"/></svg>Carrinho<span class="cnt" id="cnt2" hidden></span></button>
+  <button data-go="pedidos"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M6 3h12v18l-2-1.5-2 1.5-2-1.5-2 1.5-2-1.5L6 21z"/><path d="M9 8h6M9 12h6M9 16h3"/></svg>Pedidos</button>
+</nav>
+
+<div id="modal"></div>
+<div class="toast" id="toast" role="status" hidden></div>
+
+<script src="/socket.io/socket.io.js"></script>
+<script src="/js/chef.js"></script>
+</body>
+</html>

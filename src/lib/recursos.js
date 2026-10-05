@@ -1,0 +1,21 @@
+// Funções que a equipe de devs pode ligar ou desligar em cada restaurante.
+// Se uma função está desligada aqui, o dono não consegue religar pelo painel.
+const RECURSOS = {
+  mesa: 'Pedidos na mesa (QR Code)',
+  chamados: 'Chamar garçom e pedir a conta',
+  retirada: 'Retirada no balcão',
+  delivery: 'Delivery (entrega)',
+  pix: 'Pagamento por Pix',
+  cartao: 'Cartão na entrega',
+  dinheiro: 'Dinheiro na entrega',
+  vitrine: 'Aparecer no ChefOnline',
+  online: 'Pagamento pelo site (entrega)'
+};
+
+function recursosDe(rest) {
+  const r = (rest && rest.recursos) || {}, o = {};
+  Object.keys(RECURSOS).forEach(k => { o[k] = r[k] !== false; });
+  return o;
+}
+
+module.exports = { RECURSOS, recursosDe };

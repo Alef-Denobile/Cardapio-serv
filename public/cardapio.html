@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Cardápio</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=Figtree:wght@400;500;600;700&display=swap">
+<link rel="stylesheet" href="/css/app.css">
+</head>
+<body>
+<div class="wrap">
+  <div id="carregando" class="empty">Carregando o cardápio…</div>
+  <div id="falha" class="empty" hidden></div>
+  <div id="v-cliente" hidden>
+    <header class="rest" id="rest-head"></header>
+    <div id="avisos"></div>
+    <div class="actions" id="actions" hidden>
+      <button class="pill" data-act="call" data-t="garcom">Chamar garçom</button>
+      <button class="pill" data-act="call" data-t="conta">Pedir a conta</button>
+    </div>
+    <div class="tools">
+      <div class="search">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg>
+        <input id="q" type="search" placeholder="Buscar prato ou ingrediente" aria-label="Buscar no cardápio">
+      </div>
+      <div class="chips" id="diets"></div>
+    </div>
+    <div id="destaque"></div>
+    <nav class="cats" id="cats" aria-label="Categorias"></nav>
+    <div id="menu"></div>
+  </div>
+</div>
+<div class="bar" id="bar" hidden><div class="in" id="bar-in"></div></div>
+<div class="sheet" id="sheet-item" hidden><div class="panel" id="item-panel" role="dialog" aria-modal="true" aria-label="Detalhes do produto"></div></div>
+<div class="sheet" id="sheet-cart" hidden><div class="panel" id="cart-panel" role="dialog" aria-modal="true" aria-label="Seu pedido"></div></div>
+<div class="toast" id="toast" role="status" hidden></div>
+<script src="/socket.io/socket.io.js"></script>
+<script src="/js/comum.js"></script>
+<script src="/js/cardapio.js"></script>
+</body>
+</html>

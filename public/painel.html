@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Painel do restaurante</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=Figtree:wght@400;500;600;700&display=swap">
+<link rel="stylesheet" href="/css/app.css">
+</head>
+<body>
+<div class="offline" id="offline" hidden>Sem conexão em tempo real. Tentando reconectar…</div>
+<div class="wrap wide">
+  <div id="v-login" hidden>
+    <div class="login">
+      <div class="table-tag">Área do restaurante</div>
+      <h1>Entrar no painel</h1>
+      <p class="sub">Use o e-mail e a senha que o dono do restaurante cadastrou para você.</p>
+      <form id="f-login" class="card" novalidate>
+        <label for="l-email">E-mail</label><input id="l-email" type="email" autocomplete="username" required>
+        <label for="l-senha">Senha</label><input id="l-senha" type="password" autocomplete="current-password" required>
+        <div id="l-erro" class="erro" hidden></div>
+        <div class="row"><button class="btn" type="submit" id="l-btn">Entrar</button><button class="btn ghost" type="button" id="l-esqueci" aria-expanded="false" aria-controls="l-ajuda">Esqueci minha senha</button></div>
+        <div id="l-ajuda" class="note" hidden></div>
+      </form>
+    </div>
+  </div>
+  <div id="v-app" hidden>
+    <header class="pro-head" id="pro-head"></header>
+    <form id="f-senha" class="card" novalidate hidden>
+      <h3 style="margin-top:0">Trocar minha senha</h3>
+      <div class="grid2"><div><label for="s-atual">Senha atual</label><input id="s-atual" type="password" autocomplete="current-password"></div><div><label for="s-nova">Nova senha (mínimo 8 caracteres)</label><input id="s-nova" type="password" autocomplete="new-password"></div></div>
+      <div class="row"><button class="btn" type="submit">Salvar nova senha</button><button class="btn ghost" type="button" data-act="fechar-senha">Cancelar</button></div>
+    </form>
+    <div class="tabs" role="tablist" id="pro-tabs"></div>
+    <div class="pane" id="pane"></div>
+  </div>
+</div>
+<div class="toast" id="toast" role="status" hidden></div>
+<script src="/socket.io/socket.io.js"></script>
+<script src="/js/qrcode.js"></script>
+<script src="/js/comum.js"></script>
+<script src="/js/painel.js"></script>
+</body>
+</html>
