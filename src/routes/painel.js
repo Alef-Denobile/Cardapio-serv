@@ -9,6 +9,7 @@ const { ErroApp, rota, texto, numero, centavos, tokenAleatorio, inicioDoDia, uui
 const { limparProduto, limparConfig } = require('../lib/dados');
 const { recursosDe } = require('../lib/recursos');
 const rt = require('../realtime');
+const whatsapp = require('../lib/whatsapp');
 
 const r = express.Router();
 const equipe = exigir();            // dono, cozinha ou entregador
@@ -69,6 +70,7 @@ r.patch('/pedidos/:id/status', equipe, rota(async (req, res) => {
   });
   rt.paraEquipe(req.rid, 'pedido:atualizado', p);
   rt.paraCliente(p.id, 'pedido:atualizado', pedidoParaCliente(p), p.clienteId);
+  whatsapp.avisar(req.rest, p);
   res.json({ pedido: semCodigo(p) });
 }));
 

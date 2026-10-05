@@ -8,6 +8,7 @@ const pagamentos = require('../lib/pagamentos');
 const { recursosDe } = require('../lib/recursos');
 const { ErroApp, rota, texto, numero, tokenAleatorio, iguais, estaAberto, uuidValido, pedidoParaCliente } = require('../lib/util');
 const rt = require('../realtime');
+const whatsapp = require('../lib/whatsapp');
 const { clienteDoToken } = require('./clientes');
 
 const r = express.Router();
@@ -63,7 +64,7 @@ r.post('/r/:slug/pedidos', limitePedidos, rota(async (req, res) => {
   if (p.row.status === 'aguardando') {
     pagamento = await pagamentos.provedor().iniciar(p.obj, p.row.codigo_acomp);
     await sistema(c => c.query('UPDATE pedidos SET pag_ref = $2 WHERE id = $1', [p.row.id, pagamento.ref]));
-  } else rt.paraEquipe(rest.id, 'pedido:novo', p.obj); // pedido pago pelo site só vai para a cozinha depois de aprovado
+  } else { rt.paraEquipe(rest.id, 'pedido:novo', p.obj); whatsapp.avisar(rest, p.obj); } // pedido pago pelo site só vai para a cozinha depois de aprovado
   res.status(201).json({ pedido: pedidoParaCliente(p.obj), codigo: p.row.codigo_acomp, pagamento: pagamento ? { url: pagamento.url } : undefined });
 }));
 

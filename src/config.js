@@ -15,6 +15,11 @@ const config = {
   pagamentoProvedor: (process.env.PAGAMENTO_PROVEDOR === undefined ? 'demo' : process.env.PAGAMENTO_PROVEDOR).trim().toLowerCase().replace(/^off$/, ''),
   // Contato do suporte mostrado em "Esqueci minha senha" (opcional)
   suporteWhatsapp: (process.env.SUPORTE_WHATSAPP || '').replace(/\D/g, ''),
+  whatsapp: {
+    provedor: (process.env.WHATSAPP_PROVEDOR || '').trim().toLowerCase(), // '', 'log' ou 'meta'
+    token: process.env.WHATSAPP_TOKEN || '', phoneId: process.env.WHATSAPP_PHONE_ID || '',
+    modelo: process.env.WHATSAPP_MODELO || 'status_pedido', idioma: process.env.WHATSAPP_IDIOMA || 'pt_BR', versao: process.env.WHATSAPP_API_VERSAO || 'v21.0'
+  },
   suporteEmail: (process.env.SUPORTE_EMAIL || '').trim()
 };
 

@@ -7,6 +7,7 @@ const repo = require('../lib/repo');
 const pagamentos = require('../lib/pagamentos');
 const { ErroApp, rota, texto, iguais, uuidValido, pedidoParaCliente } = require('../lib/util');
 const rt = require('../realtime');
+const whatsapp = require('../lib/whatsapp');
 
 const r = express.Router();
 const limite = rateLimit({ windowMs: 10 * 60 * 1000, limit: 30, standardHeaders: true, legacyHeaders: false, message: { erro: 'Muitas tentativas. Aguarde alguns minutos.' } });
@@ -21,7 +22,8 @@ async function aprovar(id, ref) {
     await c.query('INSERT INTO pedido_historico (pedido_id, restaurante_id, status, por) VALUES ($1,$2,$3,$4)', [row.id, row.restaurante_id, 'novo', 'pagamento aprovado']);
     return { row, obj: (await repo.completarPedidos(c, [row]))[0] };
   });
-  if (out) { rt.paraEquipe(out.row.restaurante_id, 'pedido:novo', out.obj); rt.paraCliente(out.row.id, 'pedido:atualizado', pedidoParaCliente(out.obj), out.row.cliente_id); }
+  if (out) { rt.paraEquipe(out.row.restaurante_id, 'pedido:novo', out.obj); rt.paraCliente(out.row.id, 'pedido:atualizado', pedidoParaCliente(out.obj), out.row.cliente_id);
+    sistema(c => repo.carregarRest(c, out.row.restaurante_id)).then(rest => whatsapp.avisar(rest, out.obj)).catch(() => {}); }
   return out;
 }
 async function recusar(id) {

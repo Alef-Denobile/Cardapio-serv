@@ -355,3 +355,4 @@ input.switch[type="checkbox"]:checked::after{transform:translateX(20px)}
 @media (max-width:560px){.log-i{grid-template-columns:1fr}}
 .crumb{border:0;background:transparent;color:var(--accent);font:600 14px var(--body);cursor:pointer;padding:16px 0 0}
 .sr{position:absolute!important;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+.imp{margin:8px 0 12px}.imp code{font-size:12.5px}

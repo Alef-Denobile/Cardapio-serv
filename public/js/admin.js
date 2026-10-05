@@ -14,6 +14,7 @@ const DESC = {
   cartao: 'Maquininha levada pelo entregador.',
   dinheiro: 'Pagamento em dinheiro na entrega, com troco.',
   online: 'Na entrega, o cliente pode pagar com cartão ou Pix pelo próprio site (exige conta de cliente). O pedido só chega à cozinha depois de pago.',
+  whatsapp: 'O cliente recebe no WhatsApp: pedido recebido, pronto para retirar, saiu para entrega e cancelado. Cada mensagem tem custo para a plataforma (API oficial). O botão manual "WhatsApp do cliente" no painel funciona sempre, sem custo.',
   vitrine: 'O restaurante aparece na vitrine do ChefOnline, junto com os outros. O link próprio e os QR Codes continuam funcionando.'
 };
 

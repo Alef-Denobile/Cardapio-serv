@@ -124,6 +124,51 @@ O dono entra no painel e faz o resto: cadastra produtos, ajusta horário, bairro
 
 **Esqueci a senha (cliente):** a tela mostra o contato do suporte (`SUPORTE_WHATSAPP`/`SUPORTE_EMAIL`) e lembra que dá para pagar na entrega sem conta. Envio de link por e-mail fica para depois.
 
+## Impressora térmica na cozinha
+
+Funciona com qualquer impressora térmica instalada no computador da cozinha (Elgin, Bematech, Epson, Daruma...), em papel de 80 ou 58 mm. Não precisa de programa extra.
+
+1. Instale a impressora no Windows com o driver do fabricante e deixe-a como **impressora padrão**.
+2. No painel, aba **Pedidos → Impressora**: escolha a largura do papel, imprima o cupom de teste e ligue **"Imprimir sozinho cada pedido novo neste computador"**.
+3. Para o cupom sair direto, sem a janela de impressão, crie um atalho do Chrome só para o painel. Clique com o botão direito na área de trabalho → Novo → Atalho, e cole:
+   `"C:\Program Files\Google\Chrome\Application\chrome.exe" --kiosk-printing --app=https://SEU-ENDERECO/painel`
+   Abra o painel sempre por esse atalho. Na janela de impressão do Chrome, ajuste uma vez: margens "Nenhuma" e escala 100%.
+
+Cada pedido tem também o botão **Imprimir**, para reimprimir. A escolha da impressora fica salva só naquele computador.
+
+## Avisos no WhatsApp
+
+Há dois jeitos, e eles funcionam juntos:
+
+- **Botão "WhatsApp do cliente" (grátis, já funciona):** em cada pedido do painel, abre o WhatsApp com a mensagem pronta para a etapa ("saiu para entrega", "pronto para retirar"...). Quem envia é o celular ou o computador do restaurante.
+- **Aviso automático (API oficial do WhatsApp, pago por mensagem):** o cliente recebe sozinho "pedido recebido", "pronto para retirar", "saiu para entrega" e "cancelado". Cada mensagem custa por volta de R$ 0,04 (tabela da Meta para o Brasil, categoria utilidade); dá umas R$ 0,08 a 0,12 por pedido. Vem desligado. Os devs ligam por restaurante em `/admin` → Funções → "Avisos automáticos no WhatsApp" (bom candidato para um plano mais caro).
+
+Para ligar o aviso automático:
+1. Crie uma conta no **Meta Business** e ative a **WhatsApp Cloud API** com um número só para a plataforma (não pode ser um número que já usa o WhatsApp no celular).
+2. Crie um modelo de mensagem da categoria **Utilidade**, idioma Português (BR), chamado `status_pedido`, com o texto:
+   `Olá, {{1}}! Pedido #{{2}} no {{3}}: {{4}}.`
+   e espere a Meta aprovar (costuma levar minutos ou horas).
+3. No Render, em Environment: `WHATSAPP_PROVEDOR=meta`, `WHATSAPP_TOKEN` (token permanente do usuário do sistema) e `WHATSAPP_PHONE_ID` (o "Phone number ID" do número).
+4. Para testar sem enviar nada de verdade: `WHATSAPP_PROVEDOR=log` escreve as mensagens só no log do servidor.
+
+Se o envio falhar, o pedido segue normalmente; o erro fica no log.
+
+## Exportar para Excel
+
+No painel do dono, **Histórico e financeiro → Exportar para Excel** baixa um `.xlsx` do período escolhido (hoje, 7 dias, 30 dias ou tudo) com quatro abas:
+- **Resumo:** faturamento, pedidos, ticket médio, por canal, por forma de pagamento e composição. São fórmulas sobre a aba Pedidos, para o contador conferir.
+- **Pedidos:** um por linha, com data, canal, cliente, status, pagamento e valores.
+- **Itens:** cada item vendido, com opções, quantidade e preço.
+- **Mais vendidos.**
+
+Pedidos cancelados aparecem na lista, mas não entram nos totais.
+
+## Maquininhas de cartão (próximo passo)
+
+Hoje o entregador leva a maquininha e o painel mostra quanto cobrar. Para o valor ir sozinho para a maquininha e o pedido ficar "pago" automaticamente, o caminho mais simples para um sistema na internet como este é o **Mercado Pago Point** (Point Smart e Point Pro): o servidor cria a cobrança pela API, a maquininha mostra o valor, e o Mercado Pago avisa o servidor quando o pagamento é aprovado. Não precisa instalar nada no computador do restaurante. A mesma conta do Mercado Pago serve também para o pagamento pelo site.
+
+Stone, Cielo, PagBank e Rede integram por **TEF**, que exige um programa instalado no computador do caixa, ou por um aplicativo próprio rodando dentro da maquininha (Smart POS), com homologação de cada empresa. São mais trabalhosos para começar.
+
 ## Esqueci minha senha
 
 Não há e-mail automático: quem cadastrou a pessoa define uma senha nova.
@@ -183,6 +228,7 @@ Exigem login:
 - Pagamento por Pix e cartão integrado (Mercado Pago ou PagSeguro), com confirmação automática.
 - Envio de fotos dos produtos (hoje entra um link de imagem).
 - Verificação em duas etapas (código no celular) para as contas de dev.
+- Integrar a maquininha Mercado Pago Point (cobrança automática na entrega e no balcão).
 - Ligar uma empresa de pagamento real (cartão e Pix online), com webhook de confirmação e estorno quando o dono cancela um pedido já pago.
 - "Esqueci minha senha" por e-mail para as contas de cliente.
 - Endereços salvos na conta de cliente.

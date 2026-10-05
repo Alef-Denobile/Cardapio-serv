@@ -10,7 +10,7 @@ function restObj(r, bairros) {
     fuso: r.fuso, abre: r.abre, fecha: r.fecha, aceitarForaDoHorario: r.aceitar_fora_horario, taxaServico: r.taxa_servico, categorias: r.categorias || [],
     delivery: { ativo: r.delivery_ativo, tempo: r.delivery_tempo, tempoRetirada: r.retirada_tempo, pedidoMinimo: r.pedido_minimo, gratisAcimaDe: r.gratis_acima_de, bairros: (bairros || []).map(b => ({ nome: b.nome, taxa: b.taxa })) },
     ativo: r.ativo, plano: r.plano, observacoes: r.observacoes, motivoSuspensao: r.motivo_suspensao,
-    recursos: { mesa: r.rec_mesa, chamados: r.rec_chamados, retirada: r.rec_retirada, delivery: r.rec_delivery, pix: r.rec_pix, cartao: r.rec_cartao, dinheiro: r.rec_dinheiro, vitrine: r.rec_vitrine, online: r.rec_online },
+    recursos: { mesa: r.rec_mesa, chamados: r.rec_chamados, retirada: r.rec_retirada, delivery: r.rec_delivery, pix: r.rec_pix, cartao: r.rec_cartao, dinheiro: r.rec_dinheiro, vitrine: r.rec_vitrine, online: r.rec_online, whatsapp: r.rec_whatsapp },
     categoriaVitrine: r.categoria_vitrine || '', capaUrl: r.capa_url || '', sobre: r.sobre || '',
     createdAt: r.criado_em
   };

@@ -9,7 +9,8 @@ const RECURSOS = {
   cartao: 'Cartão na entrega',
   dinheiro: 'Dinheiro na entrega',
   vitrine: 'Aparecer no ChefOnline',
-  online: 'Pagamento pelo site (entrega)'
+  online: 'Pagamento pelo site (entrega)',
+  whatsapp: 'Avisos automáticos no WhatsApp'
 };
 
 function recursosDe(rest) {

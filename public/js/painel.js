@@ -13,6 +13,7 @@ const ABAS = {
 if (typeof qrcode === 'function' && qrcode.stringToBytesFuncs) qrcode.stringToBytes = qrcode.stringToBytesFuncs['UTF-8'];
 
 const S = { token: guardar.ler('painel:token', ''), eu: null, rest: null, aba: '', pedidos: [], chamados: [], finalizadosHoje: 0, entregadores: [], produtos: [], mesas: [], equipe: [], config: null,
+  imp: Object.assign({ auto: false, largura: 80 }, guardar.ler('painel:impressora', {})), impAberta: false, impressos: new Set(guardar.ler('painel:impressos', [])),
   kf: 'todos', hp: '7', hc: 'todos', hq: '', hn: 25, hm: 'n', rel: null, premAberta: false, vistos: new Set(), editId: null, formAberto: false, confirmar: null, socket: null };
 const chamar = (m, u, b) => api(m, u, b, S.token).catch(e => { if (e.status === 401) sair(e.message); throw e; });
 
@@ -59,7 +60,7 @@ function conectarTempoReal(){
   S.socket.on('connect', () => { $('#offline').hidden = true; carregarPedidos().then(() => { if (['pedidos', 'entregas'].includes(S.aba)) render(); }); });
   S.socket.on('disconnect', () => { $('#offline').hidden = false; });
   S.socket.on('connect_error', e => { $('#offline').hidden = false; if (e.message === 'nao-autorizado') sair('Sua sessão expirou. Entre de novo.'); });
-  S.socket.on('pedido:novo', p => { if (S.eu.papel === 'entregador'){ if (p.tipo === 'delivery'){ upsert(p); atualizarAbas(); } return; } upsert(p); bip(); toast('Novo pedido #' + p.numero); atualizarAbas(); });
+  S.socket.on('pedido:novo', p => { if (S.eu.papel === 'entregador'){ if (p.tipo === 'delivery'){ upsert(p); atualizarAbas(); } return; } upsert(p); bip(); toast('Novo pedido #' + p.numero); atualizarAbas(); if (S.imp.auto) imprimirPedido(p, true); });
   S.socket.on('pedido:atualizado', p => {
     if (S.eu.papel === 'entregador' && p.tipo !== 'delivery') return;
     const antes = S.pedidos.find(x => x._id === p._id);
@@ -95,6 +96,49 @@ async function render(){
   if (f) await f();
 }
 
+/* ---------- exportar para Excel ---------- */
+async function exportarExcel(btn){
+  btn.disabled = true; const txt = btn.textContent; btn.textContent = 'Gerando planilha…';
+  try {
+    const r = await fetch('/api/painel/exportar?periodo=' + encodeURIComponent(S.hp), { headers: { Authorization: 'Bearer ' + S.token } });
+    if (!r.ok){ const d = await r.json().catch(() => ({})); throw new Error(d.erro || 'Não foi possível gerar a planilha.'); }
+    const blob = await r.blob(), nome = (/filename="([^"]+)"/.exec(r.headers.get('Content-Disposition') || '') || [])[1] || 'pedidos.xlsx';
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = nome; document.body.appendChild(a); a.click();
+    setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 2000); toast('Planilha baixada: ' + nome);
+  } catch (e) { toast(e.message); }
+  btn.disabled = false; btn.textContent = txt;
+}
+
+/* ---------- impressora térmica e WhatsApp ---------- */
+// A impressora é deste computador, então a escolha fica salva só nele
+function salvarImp(){ guardar.gravar('painel:impressora', S.imp); }
+async function imprimirPedido(p, auto){
+  if (auto && S.impressos.has(p._id)) return; // não imprime duas vezes sozinho
+  S.impressos.add(p._id); guardar.gravar('painel:impressos', [...S.impressos].slice(-300));
+  await Cupom.imprimir(p, S.rest, S.imp.largura);
+}
+function painelImp(){
+  if (!S.impAberta) return '';
+  return '<div class="card imp"><div class="grid2"><div><label for="imp-larg">Largura do papel</label><select id="imp-larg"><option value="80"' + (S.imp.largura === 80 ? ' selected' : '') + '>80 mm (mais comum)</option><option value="58"' + (S.imp.largura === 58 ? ' selected' : '') + '>58 mm (mini)</option></select></div>' +
+    '<div><label>Impressão automática</label><label class="ck" for="imp-auto" style="font-weight:600"><input type="checkbox" id="imp-auto"' + (S.imp.auto ? ' checked' : '') + '> Imprimir sozinho cada pedido novo neste computador</label></div></div>' +
+    '<p class="note">Funciona com qualquer impressora térmica instalada no computador (Elgin, Bematech, Epson, Daruma...). Deixe-a como impressora padrão. Para sair direto, sem a janela de impressão, abra o painel pelo atalho do Chrome com <code>--kiosk-printing</code> (passo a passo no README).</p>' +
+    '<div class="row" style="margin:0"><button class="btn sm ghost" data-act="imp-teste">Imprimir cupom de teste</button><button class="btn sm ghost" data-act="imp-fechar">Fechar</button></div></div>';
+}
+const soNumeros = t => String(t || '').replace(/\D/g, '');
+function linkWhats(p){
+  let n = soNumeros(p.cliente && p.cliente.tel); if (n.length < 10) return '';
+  if (n.length <= 11) n = '55' + n;
+  const nome = String((p.cliente && p.cliente.nome) || '').split(' ')[0], r = S.rest.nome, k = '#' + p.numero;
+  const txt = {
+    novo: 'Olá, ' + nome + '! Recebemos seu pedido ' + k + ' no ' + r + '. Já vamos começar a preparar.',
+    preparo: 'Olá, ' + nome + '! Seu pedido ' + k + ' do ' + r + ' está sendo preparado.',
+    pronto: p.tipo === 'delivery' ? 'Olá, ' + nome + '! Seu pedido ' + k + ' do ' + r + ' está pronto e já vai sair para entrega.' : 'Olá, ' + nome + '! Seu pedido ' + k + ' do ' + r + ' está pronto para retirar.',
+    rota: 'Olá, ' + nome + '! Seu pedido ' + k + ' do ' + r + ' saiu para entrega' + (p.entregador ? ' com ' + p.entregador.nome : '') + '.',
+    entregue: 'Obrigado por pedir no ' + r + ', ' + nome + '! Bom apetite.'
+  }[p.status] || 'Olá, ' + nome + '! Aqui é do ' + r + ', sobre o seu pedido ' + k + '.';
+  return 'https://wa.me/' + n + '?text=' + encodeURIComponent(txt);
+}
+
 /* ---------- pedidos (cozinha e dono) ---------- */
 const ender = p => p.entrega ? p.entrega.endereco + (p.entrega.complemento ? ', ' + p.entrega.complemento : '') + ' · ' + p.entrega.bairro : '';
 const onde = p => p.tipo === 'mesa' ? 'Mesa ' + pad(p.mesa) : p.tipo === 'delivery' ? 'Entrega · ' + esc(p.entrega && p.entrega.bairro) : 'Retirada';
@@ -119,8 +163,11 @@ function cartao(p, modo){
     (p.status === 'rota' && modo !== 'ent' && p.entregador ? '<div class="note" style="margin:0">Com <strong>' + esc(p.entregador.nome) + '</strong></div>' : '') +
     (trocoTxt(p) ? '<div class="note" style="margin:0;font-weight:600">' + esc(trocoTxt(p)) + '</div>' : '') +
     '<div class="row" style="margin:0;justify-content:space-between">' + pagBadge(p) + acao + '</div>' +
-    ((pixPend && S.eu.papel !== 'entregador') || (dono && modo !== 'ent' && p.status !== 'rota') ? '<div class="row" style="margin:0;gap:14px">' + (pixPend && S.eu.papel !== 'entregador' ? '<button class="mini" data-act="pago" data-id="' + p._id + '">Confirmar Pix recebido</button>' : '') +
-      (dono && modo !== 'ent' && p.status !== 'rota' ? '<button class="mini danger" data-act="cancelar" data-id="' + p._id + '">' + (S.confirmar === 'c' + p._id ? 'Confirmar cancelamento' : 'Cancelar pedido') + '</button>' : '') + '</div>' : '') + '</div>';
+    '<div class="row" style="margin:0;gap:2px 14px">' +
+      (S.eu.papel !== 'entregador' ? '<button class="mini" data-act="imprimir" data-id="' + p._id + '">Imprimir</button>' : '') +
+      (linkWhats(p) ? '<a class="mini" href="' + esc(linkWhats(p)) + '" target="_blank" rel="noopener">WhatsApp do cliente</a>' : '') +
+      (pixPend && S.eu.papel !== 'entregador' ? '<button class="mini" data-act="pago" data-id="' + p._id + '">Confirmar Pix recebido</button>' : '') +
+      (dono && modo !== 'ent' && p.status !== 'rota' ? '<button class="mini danger" data-act="cancelar" data-id="' + p._id + '">' + (S.confirmar === 'c' + p._id ? 'Confirmar cancelamento' : 'Cancelar pedido') + '</button>' : '') + '</div></div>';
 }
 function renderPedidos(){
   const KF = S.kf;
@@ -128,7 +175,7 @@ function renderPedidos(){
   const col = (st, t) => { const l = lista.filter(p => p.status === st); return '<div class="col"><h3>' + t + ' <span>' + l.length + '</span></h3>' + (l.map(p => cartao(p)).join('') || '<p class="note" style="padding:4px">Nada por aqui.</p>') + '</div>'; };
   const mostraRota = KF === 'todos' || KF === 'delivery';
   const chips = [['todos', 'Todos'], ['delivery', 'Entrega'], ['retirada', 'Retirada'], ['mesa', 'Mesas']].map(o => '<button class="chip" data-act="kf" data-k="' + o[0] + '" aria-pressed="' + (KF === o[0]) + '">' + o[1] + ' · ' + S.pedidos.filter(p => o[0] === 'todos' || p.tipo === o[0]).length + '</button>').join('');
-  $('#pane').innerHTML = '<div class="kbar"><div class="chips">' + chips + '</div><span class="note" style="margin:0">' + S.finalizadosHoje + ' pedidos finalizados hoje</span></div>' +
+  $('#pane').innerHTML = '<div class="kbar"><div class="chips">' + chips + '</div><div class="row" style="margin:0;align-items:center"><span class="note" style="margin:0">' + S.finalizadosHoje + ' pedidos finalizados hoje</span><button class="btn sm ghost" data-act="imp-abrir" aria-expanded="' + S.impAberta + '">Impressora' + (S.imp.auto ? ' · automática' : '') + '</button></div></div>' + painelImp() +
     (S.chamados.length && (KF === 'todos' || KF === 'mesa') ? '<div class="calls">' + S.chamados.map(c => '<div class="call"><span>Mesa ' + pad(c.mesa) + (c.tipo === 'conta' ? ' pediu a conta' : ' chamou o garçom') + ' · ' + ago(c.createdAt) + '</span><button class="btn sm ghost" data-act="atendido" data-id="' + c._id + '">Atendido</button></div>').join('') + '</div>' : '') +
     '<div class="kan" style="--cols:' + (mostraRota ? 4 : 3) + '">' + col('novo', 'Novos') + col('preparo', 'Em preparo') + col('pronto', 'Prontos') + (mostraRota ? col('rota', 'Em entrega') : '') + '</div>';
   setTimeout(() => lista.forEach(p => S.vistos.add(p._id)), 2500);
@@ -321,7 +368,7 @@ async function renderHist(){
   const n = d.canais.rest.n + d.canais.delivery.n, fat = d.canais.rest.total + d.canais.delivery.total, npix = d.canais.rest.n_pix + d.canais.delivery.n_pix;
   const tmax = Math.max(1, ...d.top.map(r => r.q)), F = d.premissas;
   const fin = (k, lab, step) => '<div><label for="fin-' + k + '">' + lab + '</label><input id="fin-' + k + '" type="number" min="0" step="' + step + '" data-fin="' + k + '" value="' + F[k] + '"></div>';
-  $('#pane').innerHTML = '<div class="kbar">' + perChips() + '<span class="note" style="margin:0">' + perLabel(d) + '</span></div>' +
+  $('#pane').innerHTML = '<div class="kbar">' + perChips() + '<div class="row" style="margin:0;align-items:center"><span class="note" style="margin:0">' + perLabel(d) + '</span><button class="btn sm" data-act="exportar">Exportar para Excel</button></div></div>' +
     '<div class="kpis"><div class="kpi"><span>Faturamento</span><strong>' + brl(fat) + '</strong></div><div class="kpi"><span>Pedidos</span><strong>' + n + '</strong><span class="note" style="margin:2px 0 0">ticket médio ' + brl(n ? fat / n : 0) + '</span></div>' +
     '<div class="kpi"><span>Resultado estimado</span><strong id="k-res"></strong><span class="note" id="k-mar" style="margin:2px 0 0"></span></div><div class="kpi"><span>De onde vem a receita</span><div id="k-split" style="margin-top:8px"></div></div></div>' +
     '<h3>Balanço financeiro</h3><div class="bals" id="bal"></div>' +
@@ -423,6 +470,12 @@ document.addEventListener('click', async e => {
     case 'copiar': copiar(el.dataset.v); break;
     case 'salvar-mesas': try { await chamar('POST', '/api/painel/mesas', { quantidade: $('#m-qtd').value }); toast('Mesas atualizadas'); renderMesas(); } catch (err) { toast(err.message); } break;
     case 'novo-codigo': { const n = el.dataset.n; if (S.confirmar !== 'm' + n){ S.confirmar = 'm' + n; renderMesas(); break; } S.confirmar = null; try { await chamar('POST', '/api/painel/mesas/' + n + '/novo-codigo'); toast('Novo código gerado. Imprima o QR da Mesa ' + pad(n) + ' de novo.'); renderMesas(); } catch (err) { toast(err.message); } break; }
+    case 'exportar': exportarExcel(el); break;
+    case 'imprimir': { const p = S.pedidos.find(x => x._id === id); if (p) imprimirPedido(p); break; }
+    case 'imp-abrir': S.impAberta = !S.impAberta; renderPedidos(); break;
+    case 'imp-fechar': S.impAberta = false; renderPedidos(); break;
+    case 'imp-teste': Cupom.imprimir({ numero: 0, tipo: 'delivery', createdAt: new Date(), cliente: { nome: 'Cliente de teste', tel: '(15) 99999-0000' }, entrega: { endereco: 'Rua de Teste, 123', bairro: 'Centro', referencia: 'Perto da praça' },
+      linhas: [{ qtd: 2, nome: 'Produto de teste', unit: 10, opcoes: ['sem cebola'] }], obs: 'Cupom de teste da impressora', subtotal: 20, servico: 0, taxaEntrega: 5, total: 25, pagamento: { metodo: 'dinheiro', troco: 50, pago: false } }, S.rest, S.imp.largura); break;
     case 'nova-senha': S.senhaPara = id || null; renderEquipe(); break;
     case 'abrir-senha': $('#f-senha').hidden = false; $('#s-atual').focus(); break;
     case 'fechar-senha': $('#f-senha').hidden = true; $('#f-senha').reset(); break;
@@ -437,6 +490,8 @@ document.addEventListener('input', e => {
 });
 document.addEventListener('change', async e => {
   const t = e.target;
+  if (t.id === 'imp-larg'){ S.imp.largura = +t.value; salvarImp(); return; }
+  if (t.id === 'imp-auto'){ S.imp.auto = t.checked; salvarImp(); toast(t.checked ? 'Pedidos novos vão imprimir sozinhos neste computador' : 'Impressão automática desligada'); renderPedidos(); return; }
   if (t.id === 'p-cat'){ $('#p-novacat-w').hidden = t.value !== '__nova'; return; }
   if (t.dataset.preco){ const p = S.produtos.find(x => x._id === t.dataset.preco); try { const d = await chamar('PATCH', '/api/painel/produtos/' + p._id, { preco: t.value }); Object.assign(p, d.produto); toast('Preço de ' + p.nome + ': ' + brl(p.preco)); } catch (err) { toast(err.message); t.value = p.preco; } }
 });
