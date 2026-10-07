@@ -56,3 +56,9 @@
   }
   w.C = { ajudaSenha, $, $$, esc, brl, norm, pad, hora, ago, initials, toast, lum, aplicarCor, foto, api, guardar, copiar, STATUS, pagTxt, trocoTxt };
 })(window);
+
+// Foto que não carregar some e deixa o fundo do placeholder
+document.addEventListener('error', e => {
+  const img = e.target;
+  if (img instanceof HTMLImageElement) img.style.visibility = 'hidden';
+}, true);

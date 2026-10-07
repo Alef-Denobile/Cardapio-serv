@@ -23,35 +23,39 @@ const PRATOS = [
   ['Pizzas', 'Pizza de pepperoni', 'Pepperoni, mussarela e orégano na massa de fermentação natural', 52, 'pepperoni', true, [], [TAMANHO, BORDA]],
   ['Pizzas', 'Pizza margherita', 'Tomate-cereja, mussarela de búfala e manjericão fresco', 49, 'pizza', true, ['vegetariano'], [TAMANHO, BORDA]],
   ['Pizzas', 'Pizza quatro queijos', 'Mussarela, provolone, gorgonzola e parmesão', 56, 'queijos', false, ['vegetariano'], [TAMANHO, BORDA]],
-  ['Pizzas', 'Pizza especial da casa', 'Calabresa artesanal, cebola roxa e azeitonas', 54, '', false, [], [TAMANHO, BORDA]],
-  ['Massas', 'Espaguete à bolonhesa', 'Massa fresca com molho de carne cozido lentamente', 42, '', false, [], []],
-  ['Massas', 'Penne ao molho branco', 'Com frango desfiado e champignon', 39, '', false, [], []],
-  ['Massas', 'Lasanha da casa', 'Camadas de massa, carne, presunto, queijo e molho de tomate', 46, '', false, [], []],
-  ['Massas', 'Nhoque de batata', 'Feito na casa, com o molho que você escolher', 38, '', false, ['vegetariano'], [MOLHO]],
+  ['Pizzas', 'Pizza especial da casa', 'Calabresa artesanal, cebola roxa e azeitonas', 54, 'https://images.unsplash.com/photo-1604382354936-07c5d9983bd3?w=800&q=80&auto=format&fit=crop', false, [], [TAMANHO, BORDA]],
+  ['Massas', 'Espaguete à bolonhesa', 'Massa fresca com molho de carne cozido lentamente', 42, 'https://images.unsplash.com/photo-1622973536968-3ead9e780960?w=800&q=80&auto=format&fit=crop', false, [], []],
+  ['Massas', 'Penne ao molho branco', 'Com frango desfiado e champignon', 39, 'https://images.unsplash.com/photo-1555949258-eb67b1ef0ceb?w=800&q=80&auto=format&fit=crop', false, [], []],
+  ['Massas', 'Lasanha da casa', 'Camadas de massa, carne, presunto, queijo e molho de tomate', 46, 'https://images.unsplash.com/photo-1574894709920-11b28e7367e3?w=800&q=80&auto=format&fit=crop', false, [], []],
+  ['Massas', 'Nhoque de batata', 'Feito na casa, com o molho que você escolher', 38, 'https://images.unsplash.com/photo-1778837224436-82a8f1fa8bb1?w=800&q=80&auto=format&fit=crop', false, ['vegetariano'], [MOLHO]],
   ['Hambúrgueres', 'Hambúrguer duplo', 'Dois blends de 150 g, cheddar, bacon e cebola caramelizada', 39, 'burger', true, [], [PONTO, ADIC_BURGER]],
-  ['Hambúrgueres', 'Cheeseburger clássico', 'Blend de 160 g, queijo prato, alface e tomate', 29, '', false, [], [PONTO, ADIC_BURGER]],
-  ['Hambúrgueres', 'Burger de frango crocante', 'Filé empanado, maionese de ervas e alface americana', 31, '', false, [], [ADIC_BURGER]],
-  ['Hambúrgueres', 'Burger vegetariano', 'Hambúrguer de grão-de-bico, queijo e tomate assado', 30, '', false, ['vegetariano'], []],
-  ['Batatas e porções', 'Batata rústica', 'Com páprica e maionese da casa', 18, '', false, ['vegano'], []],
-  ['Batatas e porções', 'Batata frita tradicional', 'Porção de 300 g, crocante e sequinha', 16, '', false, ['vegano'], []],
-  ['Batatas e porções', 'Batata com cheddar e bacon', 'Porção de 300 g coberta de cheddar cremoso e bacon', 26, '', false, [], []],
-  ['Batatas e porções', 'Batata-doce frita', 'Porção de 300 g com sal de ervas', 19, '', false, ['vegano', 'sem glúten'], []],
+  ['Hambúrgueres', 'Cheeseburger clássico', 'Blend de 160 g, queijo prato, alface e tomate', 29, 'https://images.unsplash.com/photo-1568901346375-23c9450c58cd?w=800&q=80&auto=format&fit=crop', false, [], [PONTO, ADIC_BURGER]],
+  ['Hambúrgueres', 'Burger de frango crocante', 'Filé empanado, maionese de ervas e alface americana', 31, 'https://images.unsplash.com/photo-1637710847214-f91d99669e18?w=800&q=80&auto=format&fit=crop', false, [], [ADIC_BURGER]],
+  ['Hambúrgueres', 'Burger vegetariano', 'Hambúrguer de grão-de-bico, queijo e tomate assado', 30, 'https://images.unsplash.com/photo-1520072959219-c595dc870360?w=800&q=80&auto=format&fit=crop', false, ['vegetariano'], []],
+  ['Batatas e porções', 'Batata rústica', 'Com páprica e maionese da casa', 18, 'https://images.unsplash.com/photo-1633959639799-6d3f66e05710?w=800&q=80&auto=format&fit=crop', false, ['vegano'], []],
+  ['Batatas e porções', 'Batata frita tradicional', 'Porção de 300 g, crocante e sequinha', 16, 'https://images.unsplash.com/photo-1598679253544-2c97992403ea?w=800&q=80&auto=format&fit=crop', false, ['vegano'], []],
+  ['Batatas e porções', 'Batata com cheddar e bacon', 'Porção de 300 g coberta de cheddar cremoso e bacon', 26, 'https://images.unsplash.com/photo-1639744210631-209fce3e256c?w=800&q=80&auto=format&fit=crop', false, [], []],
+  ['Batatas e porções', 'Batata-doce frita', 'Porção de 300 g com sal de ervas', 19, 'https://images.unsplash.com/photo-1745792714512-77cffdb16020?w=800&q=80&auto=format&fit=crop', false, ['vegano', 'sem glúten'], []],
   ['Mexicanos', 'Tacos de camarão', 'Três tacos com abacate e molho chipotle', 48, 'tacos', true, [], []],
-  ['Mexicanos', 'Nachos com guacamole', 'Porção para dividir, com sour cream', 34, '', false, ['vegetariano'], []],
-  ['Mexicanos', 'Burrito de carne', 'Carne desfiada, feijão, arroz e queijo', 36, '', false, [], []],
-  ['Pratos leves', 'Bowl de frango e grãos', 'Frango grelhado, quinoa, legumes assados e molho de iogurte', 36, '', false, ['sem glúten'], []],
-  ['Pratos leves', 'Salada da estação', 'Folhas, frutas da época, castanhas e vinagrete de mel', 28, '', false, ['vegetariano', 'sem glúten'], []],
+  ['Mexicanos', 'Nachos com guacamole', 'Porção para dividir, com sour cream', 34, 'https://images.unsplash.com/photo-1523634700860-90d0ef74f137?w=800&q=80&auto=format&fit=crop', false, ['vegetariano'], []],
+  ['Mexicanos', 'Burrito de carne', 'Carne desfiada, feijão, arroz e queijo', 36, 'https://images.unsplash.com/photo-1711488735428-27c6757beb5c?w=800&q=80&auto=format&fit=crop', false, [], []],
+  ['Pratos leves', 'Bowl de frango e grãos', 'Frango grelhado, arroz, feijão, milho e legumes', 36, 'https://images.unsplash.com/photo-1762631383378-115f2d4cbe07?w=800&q=80&auto=format&fit=crop', false, ['sem glúten'], []],
+  ['Pratos leves', 'Salada da estação', 'Folhas, frutas da época, castanhas e vinagrete de mel', 28, 'https://images.unsplash.com/photo-1623489254660-db5b367881d9?w=800&q=80&auto=format&fit=crop', false, ['vegetariano', 'sem glúten'], []],
   ['Sopas', 'Sopa de abóbora', 'Com creme de leite e ervas frescas', 26, 'sopa', false, ['vegetariano'], []],
-  ['Sopas', 'Caldo verde', 'Couve, batata e linguiça', 24, '', false, ['sem glúten'], []],
+  ['Sopas', 'Caldo verde', 'Couve, batata e linguiça', 24, 'https://images.unsplash.com/photo-1600041974426-c62f5a7eddb3?w=800&q=80&auto=format&fit=crop', false, ['sem glúten'], []],
   ['Café e padaria', 'Café completo', 'Café coado, pão na chapa, ovos mexidos e frutas', 22, 'cafe', false, ['vegetariano'], []],
-  ['Café e padaria', 'Pão de queijo (6 un.)', 'Assado na hora', 12, '', false, ['vegetariano', 'sem glúten'], []],
+  ['Café e padaria', 'Pão de queijo (6 un.)', 'Assado na hora', 12, 'https://images.unsplash.com/photo-1784217066854-f2d84aa49532?w=800&q=80&auto=format&fit=crop', false, ['vegetariano', 'sem glúten'], []],
   ['Sobremesas', 'Casquinha de chocolate', 'Sorvete artesanal de chocolate belga na casquinha crocante', 16, 'sorvete', true, ['vegetariano'], []],
-  ['Sobremesas', 'Brownie com sorvete', 'Brownie quente com bola de creme', 22, '', false, ['vegetariano'], []],
-  ['Sobremesas', 'Pudim de leite', 'Receita da vó, com calda de caramelo', 14, '', false, ['vegetariano', 'sem glúten'], []],
+  ['Sobremesas', 'Brownie com sorvete', 'Brownie quente com bola de creme', 22, 'https://images.unsplash.com/photo-1606884285898-277317a7bf12?w=800&q=80&auto=format&fit=crop', false, ['vegetariano'], []],
+  ['Sobremesas', 'Pudim de leite', 'Receita da vó, com calda de caramelo', 14, 'https://images.unsplash.com/photo-1780798465831-de1e4d58ee46?w=800&q=80&auto=format&fit=crop', false, ['vegetariano', 'sem glúten'], []],
+  ['Batatas e porções', 'Anéis de cebola', 'Porção crocante com molho barbecue', 22, 'https://images.unsplash.com/photo-1639024471283-03518883512d?w=800&q=80&auto=format&fit=crop', false, ['vegetariano'], []],
+  ['Sobremesas', 'Açaí na tigela 500 ml', 'Com banana, morango e granola', 24, 'https://images.unsplash.com/photo-1627308594190-a057cd4bfac8?w=800&q=80&auto=format&fit=crop', false, ['vegano'], []],
+  ['Bebidas', 'Milkshake de morango', '400 ml, com chantilly', 18, 'https://images.unsplash.com/photo-1579954115545-a95591f28bfc?w=800&q=80&auto=format&fit=crop', false, ['vegetariano'], []],
+  ['Bebidas', 'Limonada suíça', '500 ml, batida com leite condensado', 11, 'https://images.unsplash.com/photo-1623084921164-4a8c5c37a912?w=800&q=80&auto=format&fit=crop', false, ['vegetariano'], []],
   ['Bebidas', 'Água mineral 500 ml', 'Com ou sem gás', 5, 'agua', false, ['vegano'], []],
-  ['Bebidas', 'Suco natural 500 ml', 'Feito na hora', 12, '', false, ['vegano'], [SABOR_SUCO]],
-  ['Bebidas', 'Refrigerante lata', '350 ml', 7, '', false, ['vegano'], []],
-  ['Bebidas', 'Chá gelado da casa', '500 ml, com limão e hortelã', 9, '', false, ['vegano'], []]
+  ['Bebidas', 'Suco natural 500 ml', 'Feito na hora', 12, 'https://images.unsplash.com/photo-1600271886742-f049cd451bba?w=800&q=80&auto=format&fit=crop', false, ['vegano'], [SABOR_SUCO]],
+  ['Bebidas', 'Refrigerante lata', '350 ml', 7, 'https://images.unsplash.com/photo-1629654613528-5d0a2e4166de?w=800&q=80&auto=format&fit=crop', false, ['vegano'], []],
+  ['Bebidas', 'Chá gelado da casa', '500 ml, com limão e hortelã', 9, 'https://images.unsplash.com/photo-1758705206938-a196ac3ae3bb?w=800&q=80&auto=format&fit=crop', false, ['vegano'], []]
 ];
 
 // Pedidos de exemplo dos últimos 30 dias, para demonstrar relatórios e o mapa das mesas
@@ -142,7 +146,7 @@ async function criarDemo(c, { reset = false, historico = false } = {}) {
     await c.query('INSERT INTO usuarios (restaurante_id, nome, email, papel, senha_hash) VALUES ($1,$2,$3,$4,$5)', [rest.id, nome, email, papel, hash]);
   const criados = [];
   for (const [categoria, nome, descricao, preco, foto, destaque, selos, opcoes] of PRATOS)
-    criados.push(await repo.criarProduto(c, rest.id, { categoria, nome, descricao, preco, selos, opcoes, fotoUrl: foto ? F(foto) : '', esgotado: false, destaque }));
+    criados.push(await repo.criarProduto(c, rest.id, { categoria, nome, descricao, preco, selos, opcoes, fotoUrl: /^https?:\/\//.test(foto) ? foto : (foto ? F(foto) : ''), esgotado: false, destaque }));
   const nHist = historico ? await gerarHistorico(c, rest, criados) : 0;
   const nAv = historico ? await avaliar(c, rest) : 0;
   return { rest, nHist, nAv };

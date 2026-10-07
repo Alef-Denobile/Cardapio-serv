@@ -479,3 +479,15 @@ window.addEventListener('hashchange', () => { lerHash(); fechar(); if (S.rota ==
   render();
 })();
 })();
+
+// Foto que não carregar vira o placeholder colorido com a inicial
+document.addEventListener('error', e => {
+  const img = e.target;
+  if (!(img instanceof HTMLImageElement) || img.dataset.falhou) return;
+  img.dataset.falhou = '1';
+  const ph = document.createElement('div');
+  ph.className = (img.className ? img.className + ' ' : '') + 'ph';
+  ph.setAttribute('aria-hidden', 'true');
+  ph.textContent = (img.alt || '•').trim()[0] || '•';
+  img.replaceWith(ph);
+}, true);
