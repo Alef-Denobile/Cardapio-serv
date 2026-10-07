@@ -16,7 +16,7 @@ function toast(t){ const el = $('#toast'); el.classList.remove('com-link'); el.t
 function avisoAdicionado(q, nome){
   const el = $('#toast'); el.classList.add('com-link');
   el.innerHTML = '<span>' + (q > 1 ? q + '× ' : '') + esc(nome) + ' adicionado</span><button type="button" class="toast-link" data-go="carrinho">Ir para o carrinho</button>';
-  el.hidden = false; clearTimeout(toast.t); toast.t = setTimeout(() => { el.hidden = true; }, 5000);
+  el.hidden = false; clearTimeout(toast.t); toast.t = setTimeout(() => { el.hidden = true; }, 3500);
 }
 async function api(m, url, corpo){
   let r;
@@ -39,6 +39,8 @@ const salvar = () => {
   const C = S.checkout; gravar('loja:checkout', { tipo: C.tipo, pag: C.pag, nome: C.nome, tel: C.tel, end: C.end, compl: C.compl, bairro: C.bairro }); // o CPF não fica salvo no aparelho
 };
 const prod = id => P.find(p => p.id === id);
+const noCarrinho = id => S.cart.filter(x => x.id === id).reduce((a, x) => a + x.q, 0);
+const selo = n => n ? '<span class="qtd-carr" aria-label="' + n + ' no carrinho">' + n + '</span>' : '';
 const unitario = (p, sel) => p.preco + (p.opcoes || []).reduce((a, o, oi) => a + ((sel && sel[oi]) || []).reduce((b, x) => b + ((o.escolhas[x] || {}).preco || 0), 0), 0);
 const nomesSel = (p, sel) => (p.opcoes || []).flatMap((o, oi) => ((sel && sel[oi]) || []).map(x => (o.escolhas[x] || {}).nome)).filter(Boolean);
 
@@ -65,7 +67,7 @@ const seta = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke
 function cardPrato(p){
   return '<article class="card"><button class="card-in" data-ver="' + p.id + '" aria-label="Ver ' + esc(p.nome) + '">' + foto(p.fotoUrl, p.nome, 'img', p.nome[0]) +
     '<div class="bd"><h3>' + esc(p.nome) + '</h3><span class="rest">' + esc(p.descricao) + '</span><div class="ft"><span class="cat-tag">' + esc(p.categoria) + '</span><span class="preco">' + brlCurto(p.preco) + '</span></div></div></button>' +
-    (p.esgotado ? '<span class="esg">Esgotado</span>' : '<button class="add-r" data-add="' + p.id + '" aria-label="Adicionar ' + esc(p.nome) + ' ao carrinho">' + ICO.mais + '</button>') + '</article>';
+    (p.esgotado ? '<span class="esg">Esgotado</span>' : '<button class="add-r' + (noCarrinho(p.id) ? ' tem' : '') + '" data-add="' + p.id + '" aria-label="Adicionar ' + esc(p.nome) + ' ao carrinho">' + ICO.mais + selo(noCarrinho(p.id)) + '</button>') + '</article>';
 }
 function trilho(id, titulo, conteudo, extra, cls){
   return '<section><div class="sec-h"><h2>' + titulo + '</h2><div class="ctrl">' + (extra || '') + '<button class="seta" data-rail="' + id + '" data-dir="-1" aria-label="Anterior">' + ICO.esq + '</button><button class="seta" data-rail="' + id + '" data-dir="1" aria-label="Próximo">' + ICO.dir + '</button></div></div><div class="rail ' + (cls || '') + '" id="' + id + '">' + conteudo + '</div></section>';
@@ -120,7 +122,7 @@ function itemLinha(p){
   return '<div class="item" id="p-' + p.id + '"><button class="item-ver" data-ver="' + p.id + '" aria-label="Ver ' + esc(p.nome) + '">' + foto(p.fotoUrl, p.nome, 'th', p.nome[0]) + '</button><div style="min-width:0"><h3><button class="link-ver" data-ver="' + p.id + '">' + esc(p.nome) + '</button></h3><p>' + esc(p.descricao) + '</p>' +
     ((p.selos || []).length ? '<div class="selos">' + p.selos.map(s => '<span>' + esc(s) + '</span>').join('') + '</div>' : '') + ((p.opcoes || []).length ? '<p class="op-tag">Escolha ' + p.opcoes.map(o => esc(o.nome.toLowerCase())).join(' e ') + '</p>' : '') + '</div>' +
     '<div class="lado"><span class="preco">' + ((p.opcoes || []).some(o => o.escolhas.some(e => e.preco)) ? '<small>a partir de</small> ' : '') + brlCurto(p.preco) + '</span>' +
-    (p.esgotado ? '<span class="esg-t">Esgotado</span>' : '<button class="btn add-btn" data-add="' + p.id + '" aria-label="Adicionar ' + esc(p.nome) + ' ao carrinho">' + ICO.mais + 'Adicionar</button>' + (q ? '<small class="no-carr">' + q + ' no carrinho</small>' : '')) + '</div></div>';
+    (p.esgotado ? '<span class="esg-t">Esgotado</span>' : '<button class="btn add-btn" data-add="' + p.id + '" aria-label="Adicionar ' + esc(p.nome) + ' ao carrinho">' + ICO.mais + 'Adicionar' + selo(q) + '</button>') + '</div></div>';
 }
 function telaProduto(){
   const p = prod(S.pid);
@@ -135,8 +137,8 @@ function telaProduto(){
       (p.opcoes || []).map((o, oi) => '<fieldset><legend>' + esc(o.nome) + ' <small>' + (o.tipo === 'um' ? 'escolha 1' : 'opcional') + '</small></legend>' + o.escolhas.map((e, ei) => '<label class="op"><input type="' + (o.tipo === 'um' ? 'radio' : 'checkbox') + '" name="o' + oi + '" value="' + ei + '"' + (o.tipo === 'um' && ei === 0 ? ' checked' : '') + '><span>' + esc(e.nome) + '</span><b>' + (e.preco ? '+ ' + brl(e.preco) : '') + '</b></label>').join('') + '</fieldset>').join('') +
       (p.esgotado ? '<p class="esg-t">Esgotado no momento</p>' :
         '<div class="prod-qtd"><span>Quantidade</span><div class="step"><button type="button" data-act="qtd-menos" aria-label="Menos um">−</button><span id="prod-q" aria-live="polite">' + q + '</span><button type="button" data-act="qtd-mais" aria-label="Mais um">+</button></div><strong id="prod-total">' + brl(p.preco * q) + '</strong></div>' +
-        '<div class="prod-acao"><button type="submit" class="btn prod-add">' + ICO.carr + 'Adicionar ao carrinho</button><button type="button" class="btn prod-pagar" data-act="pagar-agora">Pagar</button></div>' +
-        (noCarr ? '<p class="no-carr">' + noCarr + ' no carrinho · <button type="button" class="toast-link inline" data-go="carrinho">ver carrinho</button></p>' : '')) + '</form></section>' +
+        '<div class="prod-acao"><button type="submit" class="btn prod-add"><span class="ico-carr">' + ICO.carr + selo(noCarr) + '</span>Adicionar ao carrinho</button><button type="button" class="btn prod-pagar" data-act="pagar-agora">Pagar</button></div>' +
+        '') + '</form></section>' +
     (outros.length ? '<section><div class="sec-h"><h2>Mais opções de ' + esc(p.categoria.toLowerCase()) + '</h2><span class="nota">' + outros.length + ' ' + (outros.length === 1 ? 'opção' : 'opções') + '</span></div><div class="grid-r">' + outros.map(cardPrato).join('') + '</div></section>' : '');
 }
 function atualizarProd(){ const f = $('#f-prod'); if (!f || !$('#prod-total')) return; const p = prod(f.dataset.id), q = S.qtdProd || 1; $('#prod-q').textContent = q; $('#prod-total').textContent = brl(unitario(p, selDoForm(p, '#f-prod')) * q); }
@@ -195,7 +197,7 @@ function telaCarrinho(){
   const mais = base ? P.filter(x => x.categoria === base.categoria && !x.esgotado && !S.cart.some(c => c.id === x.id)).slice(0, 6) : [];
   return (S.ultimo ? '<div class="adicionado" role="status">' + ICO.check + '<span><strong>' + esc(S.ultimo.nome) + '</strong> adicionado ao carrinho</span><button class="chip" data-act="continuar">Continuar comprando</button></div>' : '') +
     '<div class="rpage"><div><div class="sec-h"><h2>Carrinho</h2><button class="ver" data-act="continuar">Adicionar mais itens ' + seta + '</button></div>' +
-    t.itens.map(i => '<div class="item">' + foto(i.p.fotoUrl, i.p.nome, 'th', i.p.nome[0]) + '<div style="min-width:0"><h3>' + esc(i.p.nome) + '</h3><p>' + esc(nomesSel(i.p, i.x.sel).join(', ') || i.p.descricao) + '</p></div><div class="lado"><span class="preco">' + brl(i.unit * i.q) + '</span><div class="step"><button data-linha-menos="' + i.x.k + '" aria-label="Tirar um">−</button><span>' + i.q + '</span><button data-linha-mais="' + i.x.k + '" aria-label="Adicionar um">+</button></div></div></div>').join('') +
+    t.itens.map(i => '<div class="item">' + foto(i.p.fotoUrl, i.p.nome, 'th', i.p.nome[0]) + '<div style="min-width:0"><h3>' + esc(i.p.nome) + '</h3><p>' + esc(nomesSel(i.p, i.x.sel).join(', ') || i.p.descricao) + '</p></div><div class="lado"><span class="preco">' + brl(i.unit * i.q) + '</span><div class="step"><button data-linha-menos="' + esc(i.x.k) + '" aria-label="Tirar um">−</button><span>' + i.q + '</span><button data-linha-mais="' + esc(i.x.k) + '" aria-label="Adicionar um">+</button></div></div></div>').join('') +
     (mais.length ? '<section class="mais"><div class="sec-h"><h2>Mais opções de ' + esc(base.categoria.toLowerCase()) + '</h2></div><div class="grid-r mini">' + mais.map(cardPrato).join('') + '</div></section>' : '') +
     '</div>' + blocoResumo() + '</div>';
 }

@@ -398,3 +398,12 @@ footer .wrap{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap}
 .prod-acao{grid-template-columns:minmax(0,1.6fr) minmax(0,1fr)}
 .prod-acao .btn{white-space:nowrap;font-size:16px}
 @media (max-width:420px){.prod-acao{grid-template-columns:1fr}}
+/* número de unidades já no carrinho, em cima do ícone */
+.ico-carr{position:relative;display:inline-grid;place-items:center}
+.qtd-carr{position:absolute;top:-9px;right:-11px;min-width:19px;height:19px;border-radius:10px;background:var(--gold);color:var(--gold-ink);font:900 11.5px/19px var(--body);padding-inline:5px;text-align:center;box-shadow:0 1px 4px rgb(0 0 0 / .25)}
+.add-btn,.add-r{position:relative}
+.add-btn .qtd-carr{top:-8px;right:-8px}
+.add-r .qtd-carr{top:-6px;right:-6px}
+.add-r.tem{opacity:1;transform:none}
+[hidden]{display:none!important}
+.prod-add .ico-carr{margin-right:10px}
