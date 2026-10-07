@@ -138,6 +138,14 @@ O dono entra no painel e faz o resto: cadastra produtos, ajusta horário, bairro
 
 **Esqueci a senha (cliente):** a tela mostra o contato do suporte (`SUPORTE_WHATSAPP`/`SUPORTE_EMAIL`) e lembra que dá para pagar na entrega sem conta. Envio de link por e-mail fica para depois.
 
+## Os três sites
+
+- **Pedido online (de casa):** `/r/<restaurante>` (e a página inicial `/`). Tem início, cardápio, carrinho e acompanhamento, para entrega ou retirada.
+- **Cardápio do salão (no restaurante):** `/r/<restaurante>/mesa/<n>?t=<código>` pelo QR de cada mesa. Mostra só o cardápio, com barra lateral de categorias, e o carrinho, sem tela de início. O cliente pede, acompanha o pedido em tempo real, chama o garçom e pede a conta. Em `/r/<restaurante>/salao` fica só o cardápio para ver (QR da entrada, do balcão ou da vitrine).
+- **Painel do restaurante (equipe):** `/painel`, com pedidos, produtos, estoque, histórico e financeiro.
+
+O totem do balcão (`/r/<restaurante>/totem`) é a quarta tela, para autoatendimento.
+
 ## Recursos de operação
 
 **Peça também.** No carrinho do site, da mesa e do totem aparecem sugestões que combinam com o pedido. O dono marca os produtos em Produtos → "Sugerir no carrinho". Se não marcar nenhum, o sistema sugere bebidas, sobremesas e porções de categorias que ainda não estão no carrinho.

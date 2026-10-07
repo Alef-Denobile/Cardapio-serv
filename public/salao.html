@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Cardápio</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap">
+<link rel="stylesheet" href="/css/salao.css">
+</head>
+<body>
+<header class="sl-top" id="topo"></header>
+<div class="sl-aviso" id="aviso" hidden></div>
+<div class="sl-corpo">
+  <nav class="sl-cats" id="cats" aria-label="Categorias do cardápio"></nav>
+  <main class="sl-prods" id="prods"><p class="sl-carregando">Carregando o cardápio…</p></main>
+  <aside class="sl-carr" id="carr" aria-label="Seu pedido"></aside>
+</div>
+<div class="sl-fundo" id="fundo" data-act="fechar-carr" hidden></div>
+<div class="sl-barra" id="barra" hidden></div>
+<div id="modal"></div>
+<div class="sl-toast" id="toast" role="status" hidden></div>
+<script src="/socket.io/socket.io.js"></script>
+<script src="/js/sugestoes.js"></script>
+<script src="/js/salao.js"></script>
+</body>
+</html>

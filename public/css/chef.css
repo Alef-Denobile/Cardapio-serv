@@ -427,3 +427,33 @@ footer .wrap{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap}
 .agendado{display:flex;gap:6px;align-items:center;margin:0;font-weight:800;color:var(--red)}
 .agendado svg{width:18px;height:18px}
 .peca .sec-h h2{color:var(--red)}
+
+/* ---------- carrinho: o pedido em destaque, sugestões compactas ---------- */
+.carr-item{grid-template-columns:150px minmax(0,1fr) auto;gap:22px;padding:18px;margin-bottom:14px;border:0;border-radius:10px;background:var(--surface);box-shadow:var(--shadow)}
+.carr-item .th{width:150px;height:120px;border-radius:8px}
+.carr-item .th.ph{font-size:42px}
+.carr-item h3{font-size:23px}
+.carr-item p{font-size:16px}
+.carr-item .preco{font-size:21px}
+.carr-item .step{grid-template-columns:44px 52px 44px;height:46px}
+.carr-item .step button{font-size:22px}
+@media (max-width:560px){.carr-item{grid-template-columns:110px minmax(0,1fr);gap:14px;padding:14px}.carr-item .th{width:110px;height:92px}.carr-item h3{font-size:19px}}
+.rpage .mais{margin-top:22px}
+.rpage .mais .sec-h{margin-bottom:8px}
+.rpage .mais .sec-h h2{font-size:18px}
+.rpage .mais .sec-h .nota{font-size:13px}
+.rpage .grid-r.mini{display:flex;gap:10px;overflow-x:auto;padding:2px 2px 10px;scroll-snap-type:x proximity;align-items:flex-start}
+.rpage .grid-r.mini .card{flex:0 0 150px;scroll-snap-align:start}
+.rpage .grid-r.mini .card:hover{transform:none}
+.rpage .grid-r.mini .card .img{aspect-ratio:auto;height:84px}
+.rpage .grid-r.mini .card .img.ph{font-size:26px}
+.rpage .grid-r.mini .card .bd{padding:7px 9px 9px;gap:0}
+.rpage .grid-r.mini .card h3{font-size:13.5px;line-height:1.2;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;min-height:2.4em}
+.rpage .grid-r.mini .card .rest,.rpage .grid-r.mini .card .cat-tag{display:none}
+.rpage .grid-r.mini .card .ft{margin-top:4px}
+.rpage .grid-r.mini .card .preco{font-size:13.5px}
+.rpage .grid-r.mini .add-r{position:absolute;width:30px;height:30px;right:6px;top:6px;opacity:1;transform:none}
+.rpage .grid-r.mini .add-r svg{width:15px;height:15px}
+.rpage .grid-r.mini .esg{font-size:11px}
+@media (max-width:1000px){.rpage{grid-template-columns:minmax(0,1fr)}}
+.rpage > div{min-width:0}

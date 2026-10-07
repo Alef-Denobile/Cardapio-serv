@@ -45,7 +45,9 @@ const pub = path.join(__dirname, '..', 'public');
 app.use(express.static(pub, { extensions: ['html'], maxAge: config.producao ? '1h' : 0 }));
 // Site do restaurante (cardápio, entrega e retirada) e, pelo QR Code, o pedido na mesa
 app.get('/r/:slug', (req, res) => res.sendFile(path.join(pub, 'index.html')));
-app.get('/r/:slug/mesa/:numero', (req, res) => res.sendFile(path.join(pub, 'cardapio.html')));
+// Cardápio do salão (quem já está no restaurante): pela mesa (QR da mesa) ou só para ver (/salao)
+app.get('/r/:slug/mesa/:numero', (req, res) => res.sendFile(path.join(pub, 'salao.html')));
+app.get('/r/:slug/salao', (req, res) => res.sendFile(path.join(pub, 'salao.html')));
 // Modo totem (autoatendimento no balcão): o link do painel leva o código secreto do totem
 app.get('/r/:slug/totem', (req, res) => { res.set('X-Robots-Tag', 'noindex'); res.sendFile(path.join(pub, 'totem.html')); });
 app.get('/pagar/:id', (req, res) => { res.set('X-Robots-Tag', 'noindex'); res.sendFile(path.join(pub, 'pagar.html')); });
