@@ -17,8 +17,15 @@ function precisaSsl(url) {
   try { const h = new URL(url).hostname; return h !== 'localhost' && h !== '127.0.0.1' && h.includes('.'); } catch (e) { return false; }
 }
 
+function limparUrl(url) {
+  try { const u = new URL(url); u.searchParams.delete('sslmode'); u.searchParams.delete('channel_binding'); return u.toString(); }
+  catch (e) { return url; }
+}
+
 const pool = new Pool({
-  connectionString: config.databaseUrl.replace(/[?&]sslmode=[^&]*/, ''),
+  // sslmode e channel_binding (que o Neon coloca no endereço) são tratados aqui, não pelo driver
+  connectionString: limparUrl(config.databaseUrl),
+  connectionTimeoutMillis: 15000, // bancos gratuitos que "dormem" (Neon) levam alguns segundos para acordar
   ssl: precisaSsl(config.databaseUrl) ? { rejectUnauthorized: false } : false,
   max: Number(process.env.DATABASE_POOL || 10),
   idleTimeoutMillis: 30000

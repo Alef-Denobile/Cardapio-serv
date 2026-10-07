@@ -1,27 +1,26 @@
-# Blueprint do Render: cria o banco PostgreSQL e o servidor já ligados um ao outro.
-databases:
-  - name: cardapio-db
-    databaseName: cardapio
-    postgresMajorVersion: "17"
-    region: virginia
-    plan: 0.1c-256mb   # menor plano pago; troque no painel do Render quando crescer
-
+# Blueprint GRATUITO do Render: só o servidor (plano free). O banco fica no Neon (gratuito e sem prazo).
+# Antes de aplicar: crie o banco no Neon e o usuário do app (veja neon.sql e o README, "Colocar no ar de graça").
+# Para passar ao plano pago (servidor sem dormir + banco no Render), use render-pago.yaml.
 services:
   - type: web
     name: cardapio-digital
     runtime: node
-    plan: starter
+    plan: free
     region: virginia
-    buildCommand: npm install
+    # O plano gratuito não tem Shell: o exemplo de demonstração e o primeiro acesso de dev são criados no build.
+    # Se já existirem, o seed não mexe em nada.
+    buildCommand: npm install && npm run seed -- --com-historico
     startCommand: npm start
     healthCheckPath: /api/saude
     envVars:
       - key: NODE_ENV
         value: production
-      - key: DATABASE_URL
-        fromDatabase:
-          name: cardapio-db
-          property: connectionString
+      - key: DATABASE_URL        # endereço do Neon com o usuário cardapio_app
+        sync: false
+      - key: ADMIN_INICIAL_EMAIL # seu e-mail para entrar em /admin
+        sync: false
+      - key: ADMIN_INICIAL_SENHA # mínimo 10 caracteres
+        sync: false
       - key: PUBLIC_URL
         sync: false
       - key: JWT_SECRET

@@ -105,8 +105,16 @@ async function gerarHistorico(c, rest, produtos) {
         `  Cardápio de delivery: ${base}/r/${SLUG}`, `  Exemplo de QR da Mesa 1: ${base}/r/${SLUG}/mesa/1?t=${mesa1.token}`, `  Painel: ${base}/painel`,
         `  Logins (senha ${SENHA}): dono@casajabuticaba.com · cozinha@casajabuticaba.com · carlos@casajabuticaba.com`];
       if (!(await c.query('SELECT 1 FROM admins LIMIT 1')).rowCount) {
-        await c.query('INSERT INTO admins (nome, email, senha_hash) VALUES ($1, $2, $3)', ['Dev', 'dev@cardapio.dev', await bcrypt.hash('devs-troque-esta-senha', 10)]);
-        linhas.push(`  Área de devs: ${base}/admin  (dev@cardapio.dev / devs-troque-esta-senha — crie a sua conta com "npm run novo-admin" e desative esta)`);
+        // Primeiro acesso de dev: ADMIN_INICIAL_EMAIL e ADMIN_INICIAL_SENHA (útil no plano gratuito do Render, que não tem Shell)
+        const emailAdm = (process.env.ADMIN_INICIAL_EMAIL || '').trim().toLowerCase(), senhaAdm = process.env.ADMIN_INICIAL_SENHA || '';
+        if (emailAdm && senhaAdm.length >= 10) {
+          await c.query('INSERT INTO admins (nome, email, senha_hash) VALUES ($1, $2, $3)', [process.env.ADMIN_INICIAL_NOME || 'Dev', emailAdm, await bcrypt.hash(senhaAdm, 10)]);
+          linhas.push(`  Área de devs: ${base}/admin  (${emailAdm} / a senha de ADMIN_INICIAL_SENHA)`);
+        } else {
+          if (emailAdm) linhas.push('  Aviso: ADMIN_INICIAL_SENHA precisa ter pelo menos 10 caracteres. Usando o acesso de dev padrão.');
+          await c.query('INSERT INTO admins (nome, email, senha_hash) VALUES ($1, $2, $3)', ['Dev', 'dev@cardapio.dev', await bcrypt.hash('devs-troque-esta-senha', 10)]);
+          linhas.push(`  Área de devs: ${base}/admin  (dev@cardapio.dev / devs-troque-esta-senha — crie a sua conta com "npm run novo-admin" e desative esta)`);
+        }
       }
       let nAv = 0;
       if (process.argv.includes('--com-historico')) nAv = await avaliacoesExemplo(c);

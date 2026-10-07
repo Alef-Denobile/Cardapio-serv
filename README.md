@@ -65,25 +65,36 @@ Para testar o tempo real, abra o cardápio no celular e o painel no computador, 
 1. Crie uma conta em **github.com** e um repositório **privado** (por exemplo `cardapio-digital`).
 2. Envie esta pasta para o repositório. O arquivo `.env` **não** vai junto, e é assim que deve ser.
 
-### 2. Banco e servidor: Render (um clique com o Blueprint)
+### 2. De graça: banco no Neon e servidor no Render (`render.yaml`)
 
+Bom para demonstração e para os primeiros testes. Custo zero, sem cartão no Neon.
+
+**Banco (Neon, gratuito e sem prazo para acabar):**
+1. Crie uma conta em **neon.com** e um projeto (região **US East**, perto do servidor). Ele já vem com o banco `neondb`.
+2. Abra o **SQL Editor**, cole o arquivo `neon.sql` (troque a senha dentro dele) e clique em **Run**. Isso cria o usuário `cardapio_app`, que não é administrador do banco; assim o isolamento entre restaurantes vale de verdade.
+3. Monte o endereço: no botão **Connect**, desligue a opção "Connection pooling" e copie o host (algo como `ep-xxxx.us-east-1.aws.neon.tech`). O endereço fica:
+   `postgresql://cardapio_app:SUA-SENHA@SEU-HOST/neondb?sslmode=require`
+
+**Servidor (Render, plano Free):**
 1. Crie uma conta em **render.com** e conecte o GitHub.
-2. Clique em **New > Blueprint** e escolha o repositório. O arquivo `render.yaml` já cria duas coisas, ligadas entre si:
-   - o banco **PostgreSQL** (`cardapio-db`);
-   - o **servidor** (`cardapio-digital`).
+2. **New > Blueprint**, escolha o repositório. O `render.yaml` cria o servidor no plano **Free** e pede quatro valores:
+   - `DATABASE_URL`: o endereço do Neon acima;
+   - `ADMIN_INICIAL_EMAIL` e `ADMIN_INICIAL_SENHA` (mínimo 10 caracteres): o seu acesso à área de devs;
+   - `PUBLIC_URL`: deixe em branco por enquanto.
+3. Aguarde o deploy. O build já cria as tabelas, os restaurantes de demonstração e o seu acesso de dev (o plano Free não tem Shell, por isso isso acontece no build; nos próximos deploys ele não mexe em nada).
+4. Teste `https://SEU-SITE.onrender.com/api/saude`, depois coloque esse endereço em `PUBLIC_URL` (Environment).
 
-   O `DATABASE_URL` e o `JWT_SECRET` são preenchidos sozinhos.
-3. Preencha só o `PUBLIC_URL`, com o endereço do site, por exemplo `https://cardapio-digital.onrender.com`.
-4. Aguarde o deploy. Na primeira vez, o servidor cria todas as tabelas sozinho. Teste em `https://SEU-SITE/api/saude`, que deve responder `{"ok":true}`.
-5. Crie o restaurante de exemplo e a primeira conta de dev. No Render, abra o banco, copie a **External Database URL**, coloque no seu `.env` como `DATABASE_URL` e rode no seu computador:
-   ```
-   npm run seed
-   npm run novo-admin -- --nome "Seu Nome" --email voce@email.com --senha "umaSenhaBemForte"
-   ```
+**Limites do gratuito (confira no site de cada um, eles mudam):**
+- **O servidor "dorme"** depois de 15 minutos sem acesso. O primeiro acesso depois disso demora cerca de 1 minuto para abrir. Na demonstração, abra o site uns 2 minutos antes de chegar ao restaurante.
+- O servidor tem 750 horas grátis por mês, o suficiente para um servidor ligado o mês inteiro.
+- O Neon guarda até 1 GB por projeto (dezenas de milhares de pedidos) e também "dorme" após 5 minutos; acorda em menos de um segundo.
+- **Não use o gratuito com restaurante de verdade:** se o servidor estiver dormindo, o pedido do cliente demora para entrar e o painel da cozinha perde a conexão. No primeiro cliente pagante, passe o servidor para o plano **Starter** (Render → Settings → Instance Type). O banco pode continuar no Neon.
 
-O plano **Starter** do servidor fica sempre ligado. Os planos e preços do banco aparecem na hora de criar: escolha o menor para começar e aumente quando houver mais restaurantes. Confira os valores atuais no site do Render.
+Os comandos que precisariam do Shell (`npm run novo-admin`, `npm run novo-restaurante`) podem ser rodados no seu computador, com o mesmo `DATABASE_URL` no arquivo `.env`. Restaurantes novos também podem ser criados direto em `/admin`.
 
-**Alternativa:** usar o banco no **Neon** ou no **Supabase**, que têm plano gratuito, e só o servidor no Render. Nesse caso, apague o bloco `databases` do `render.yaml` e coloque o endereço do banco em `DATABASE_URL` na mão.
+### 2b. Pago: banco e servidor no Render (`render-pago.yaml`)
+
+Quando tiverem clientes, use **New > Blueprint** com o caminho `render-pago.yaml`. Ele cria o banco PostgreSQL no Render e o servidor no plano Starter, sempre ligado, já conectados. Depois rode `npm run seed` e `npm run novo-admin` pelo Shell do Render. Confira os preços atuais no site do Render.
 
 ### 3. Domínio próprio (opcional)
 
