@@ -9,7 +9,7 @@ const { recursosDe } = require('../lib/recursos');
 
 const r = express.Router();
 const limiteLogin = rateLimit({ windowMs: 15 * 60 * 1000, limit: 10, standardHeaders: true, legacyHeaders: false, message: { erro: 'Muitas tentativas de entrar. Aguarde 15 minutos e tente de novo.' } });
-const restResumo = rest => ({ nome: rest.nome, slug: rest.slug, cor: rest.cor, logoUrl: rest.logoUrl, recursos: recursosDe(rest) });
+const restResumo = rest => ({ nome: rest.nome, slug: rest.slug, cor: rest.cor, logoUrl: rest.logoUrl, recursos: recursosDe(rest), fuso: rest.fuso, agendamento: { ativo: rest.agendamento.ativo, preparo: rest.agendamento.preparo } });
 
 r.post('/login', limiteLogin, rota(async (req, res) => {
   const email = texto(req.body && req.body.email, 120).toLowerCase();

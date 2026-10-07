@@ -27,8 +27,9 @@ function calc(){ const sub = cartSub(); const serv = U.tipo === 'mesa' ? sub * R
 const NOMES_PAG = { pix: 'Pix', cartao: 'Cartão na entrega', dinheiro: 'Dinheiro' };
 function payOpts(){ return (R.pagamentos[U.tipo] || []).filter(m => m !== 'online').map(m => [m, m === 'local' ? (U.tipo === 'mesa' ? 'Pagar na mesa' : 'Pagar na retirada') : NOMES_PAG[m]]); }
 function fixPag(){ const o = payOpts(); if (!o.some(x => x[0] === U.form.pag)) U.form.pag = o.length ? o[o.length > 1 && U.tipo === 'delivery' ? 1 : o.length - 1][0] : ''; }
-const temDelivery = () => R.tipos.includes('delivery');
-const tiposOnline = () => R.tipos.filter(t => t !== 'mesa');
+// Entrega cobrada por distância precisa do mapa: nesse caso a entrega é feita pelo site do restaurante
+const tiposOnline = () => R.tipos.filter(t => t !== 'mesa' && !(t === 'delivery' && R.delivery.modo === 'distancia'));
+const temDelivery = () => tiposOnline().includes('delivery');
 const podePedir = () => !!U.tipo && (R.aberto || R.aceitarForaDoHorario);
 
 /* ---------- carregar ---------- */
@@ -44,7 +45,7 @@ async function iniciar(){
     try { U.mesaOk = (await api('GET', '/api/r/' + encodeURIComponent(SLUG) + '/mesa/' + MESA + '?t=' + encodeURIComponent(TOKEN))).valida; } catch (e) { U.mesaOk = false; }
     if (!U.mesaOk) U.tipo = tiposOnline()[0] || '';
   }
-  if (U.tipo !== 'mesa' && !R.tipos.includes(U.tipo)) U.tipo = tiposOnline()[0] || '';
+  if (U.tipo !== 'mesa' && !tiposOnline().includes(U.tipo)) U.tipo = tiposOnline()[0] || '';
   fixPag();
   $('#carregando').hidden = true; $('#v-cliente').hidden = false;
   renderHead(); renderMenu(); renderBar();
@@ -116,6 +117,7 @@ function openCart(step){ U.step = step || 'form'; renderCart(); $('#sheet-cart')
 const head = t => '<div class="sh-head"><h2>' + t + '</h2><button class="x" data-act="close" aria-label="Fechar">×</button></div>';
 function renderCart(){
   const P0 = $('#cart-panel'), F = U.form;
+  if (U.step === 'conta') return renderConta();
   if (U.step !== 'form') return renderStatus();
   if (!U.cart.length){ P0.innerHTML = head('Seu pedido') + '<p class="empty">Seu pedido está vazio.</p>'; return; }
   fixPag();
@@ -126,7 +128,9 @@ function renderCart(){
   const tipos = tiposOnline().map(t => [t, t === 'delivery' ? 'Entrega' : 'Retirar no balcão']);
   const tipoSel = U.tipo === 'mesa' ? '<p class="eta">Pedido para a Mesa ' + pad(MESA) + '</p>' :
     '<label>Como você quer receber?</label><div class="seg2" style="grid-template-columns:repeat(' + tipos.length + ',1fr)">' + tipos.map(o => '<button data-act="tipo" data-t="' + o[0] + '" aria-pressed="' + (U.tipo === o[0]) + '">' + o[1] + '</button>').join('') + '</div><p class="eta">' + (dl ? 'Previsão de entrega: ' + esc(R.delivery.tempo) : 'Pronto para retirar em ' + esc(R.delivery.tempoRetirada)) + '</p>';
-  P0.innerHTML = head('Seu pedido') + lines + tipoSel +
+  const sug = typeof Sugestoes === 'object' ? Sugestoes.escolher(P, U.cart.map(l => l.id), 3) : [];
+  const peca = sug.length ? '<div class="peca"><p class="peca-t">Peça também</p>' + sug.map(p => '<div class="peca-i"><span class="ph">' + foto(p, idxCat(p.categoria)) + '</span><span class="peca-n"><strong>' + esc(p.nome) + '</strong><small>' + brl(p.preco) + '</small></span><button class="btn sm ghost" data-act="add-sug" data-id="' + p.id + '" aria-label="Adicionar ' + esc(p.nome) + '">+ Adicionar</button></div>').join('') + '</div>' : '';
+  P0.innerHTML = head('Seu pedido') + lines + peca + tipoSel +
     '<div class="grid2"><div><label for="c-nome">Seu nome</label><input id="c-nome" data-f="nome" autocomplete="name" value="' + esc(F.nome) + '"></div>' + (U.tipo !== 'mesa' ? '<div><label for="c-tel">WhatsApp com DDD</label><input id="c-tel" data-f="tel" inputmode="tel" autocomplete="tel" placeholder="(15) 99999-0000" value="' + esc(F.tel) + '"></div>' : '') + '</div>' +
     (dl ? '<div class="grid2"><div><label for="c-end">Rua e número</label><input id="c-end" data-f="end" autocomplete="street-address" placeholder="Rua das Flores, 120" value="' + esc(F.end) + '"></div><div><label for="c-compl">Complemento</label><input id="c-compl" data-f="compl" placeholder="Apto, bloco, casa" value="' + esc(F.compl) + '"></div>' +
       '<div><label for="c-bairro">Bairro</label><select id="c-bairro" data-f="bairro">' + R.delivery.bairros.map(b => '<option' + (b.nome === F.bairro ? ' selected' : '') + ' value="' + esc(b.nome) + '">' + esc(b.nome) + ' · ' + brl(b.taxa) + '</option>').join('') + '</select></div><div><label for="c-ref">Ponto de referência</label><input id="c-ref" data-f="ref" placeholder="Perto da padaria" value="' + esc(F.ref) + '"></div></div>' : '') +
@@ -206,6 +210,55 @@ function renderStatus(){
     '<div class="row"><button class="btn" data-act="close">Voltar ao cardápio</button></div>';
 }
 
+/* ---------- conta da mesa ---------- */
+const PAG_CONTA = [['pix', 'Pix'], ['cartao', 'Cartão'], ['dinheiro', 'Dinheiro']];
+async function abrirConta(){
+  U.step = 'conta'; U.conta = null; U.contaEnviada = null;
+  U.contaF = U.contaF || { pag: 'cartao', pessoas: 1 };
+  $('#cart-panel').innerHTML = head('Conta da Mesa ' + pad(MESA)) + '<p class="note">Carregando a conta…</p>'; $('#sheet-cart').hidden = false;
+  try { U.conta = (await api('GET', '/api/r/' + encodeURIComponent(SLUG) + '/mesa/' + MESA + '/conta?t=' + encodeURIComponent(TOKEN))).conta; }
+  catch (e) { U.conta = { erro: e.message }; }
+  if (U.step === 'conta') renderConta();
+}
+function renderConta(){
+  const c = U.conta, F = U.contaF, P0 = $('#cart-panel');
+  if (!c) return;
+  if (c.erro){ P0.innerHTML = head('Conta da Mesa ' + pad(MESA)) + '<p class="warnbox">' + esc(c.erro) + '</p>'; return; }
+  const pags = PAG_CONTA.filter(x => x[0] !== 'pix' || R.recursos.pix !== false);
+  if (!pags.some(x => x[0] === F.pag)) F.pag = pags[0][0];
+  // junta os itens iguais dos vários pedidos da mesa
+  const it = new Map();
+  c.pedidos.forEach(p => p.linhas.forEach(l => { const k = l.nome + '|' + l.opcoes.join(','); const x = it.get(k) || { nome: l.nome, opcoes: l.opcoes, qtd: 0, v: 0 }; x.qtd += l.qtd; x.v += l.unit * l.qtd; it.set(k, x); }));
+  const ok = U.contaEnviada;
+  P0.innerHTML = head('Conta da Mesa ' + pad(MESA)) +
+    (!c.pedidos.length ? '<p class="note">Ainda não há pedidos em aberto nesta mesa pelo celular. Se você pediu com o garçom, ele traz a conta completa.</p>' :
+      '<p class="note" style="margin-top:0">' + c.pedidos.length + (c.pedidos.length > 1 ? ' pedidos desta mesa ainda não pagos.' : ' pedido desta mesa ainda não pago.') + '</p>' +
+      '<div>' + [...it.values()].map(x => '<div class="line"><span>' + x.qtd + '× ' + esc(x.nome) + (x.opcoes.length ? '<small>' + esc(x.opcoes.join(' · ')) + '</small>' : '') + '</span><span>' + brl(x.v) + '</span></div>').join('') +
+      '<div class="line"><span>Subtotal</span><span>' + brl(c.subtotal) + '</span></div>' + (c.servico ? '<div class="line"><span>Taxa de serviço (' + R.taxaServico + '%)</span><span>' + brl(c.servico) + '</span></div>' : '') +
+      '<div class="line total"><span>Total</span><span>' + brl(c.total) + '</span></div></div>' +
+      '<label>Como vai pagar?</label><div class="seg2" style="grid-template-columns:repeat(' + pags.length + ',1fr)">' + pags.map(x => '<button data-act="cpag" data-p="' + x[0] + '" aria-pressed="' + (F.pag === x[0]) + '">' + x[1] + '</button>').join('') + '</div>' +
+      '<label>Dividir a conta</label><div class="row between" style="margin:0"><div class="qty"><button data-act="cpes" data-d="-1" aria-label="Menos uma pessoa">−</button><span>' + F.pessoas + '</span><button data-act="cpes" data-d="1" aria-label="Mais uma pessoa">+</button></div><span class="note" style="margin:0">' + (F.pessoas > 1 ? F.pessoas + ' pessoas · <strong>' + brl(c.total / F.pessoas) + ' cada</strong>' : '1 pessoa') + '</span></div>') +
+    (ok ? '<p class="okbox">Pronto! O garçom já vem com a conta' + (c.pedidos.length ? ' · ' + esc(PAG_CONTA.find(x => x[0] === ok.pagamento) ? PAG_CONTA.find(x => x[0] === ok.pagamento)[1] : '') + (ok.pessoas > 1 ? ', dividida em ' + ok.pessoas : '') : '') + '.</p>' : '') +
+    '<div class="row"><button class="btn" data-act="send-conta"' + (ok ? ' disabled' : '') + '>' + (ok ? 'Conta pedida ✓' : 'Pedir a conta ao garçom') + '</button><button class="btn ghost" data-act="close">Voltar ao cardápio</button></div>';
+}
+async function pedirConta(btn){
+  const F = U.contaF; btn.disabled = true; btn.textContent = 'Chamando…';
+  try {
+    const d = await api('POST', '/api/r/' + encodeURIComponent(SLUG) + '/chamados', { mesa: MESA, token: TOKEN, tipo: 'conta', pagamento: F.pag, pessoas: F.pessoas });
+    U.contaEnviada = d.chamado; if (d.conta) U.conta = d.conta; renderConta();
+    toast(d.repetido ? 'Atualizamos o seu pedido de conta. O garçom já vem.' : 'Conta pedida. O garçom já vem.');
+  } catch (e) { toast(e.message); btn.disabled = false; btn.textContent = 'Pedir a conta ao garçom'; }
+}
+async function chamarGarcom(btn){
+  btn.disabled = true;
+  try {
+    const d = await api('POST', '/api/r/' + encodeURIComponent(SLUG) + '/chamados', { mesa: MESA, token: TOKEN, tipo: 'garcom' });
+    toast(d.repetido ? 'O garçom já foi chamado e está a caminho.' : 'Garçom chamado para a Mesa ' + pad(MESA) + '.');
+    btn.textContent = 'Garçom chamado ✓';
+    setTimeout(() => { btn.disabled = false; btn.textContent = 'Chamar garçom'; }, 60000);
+  } catch (e) { toast(e.message); btn.disabled = false; }
+}
+
 /* ---------- eventos ---------- */
 function fechar(){ $('#sheet-item').hidden = true; $('#sheet-cart').hidden = true; U.step = 'form'; renderBar(); }
 document.addEventListener('click', async e => {
@@ -226,7 +279,12 @@ document.addEventListener('click', async e => {
     case 'pag': U.form.pag = el.dataset.p; renderCart(); break;
     case 'send': enviar(); break;
     case 'copiar-pix': copiar(R.chavePix); break;
-    case 'call': try { await api('POST', '/api/r/' + encodeURIComponent(SLUG) + '/chamados', { mesa: MESA, token: TOKEN, tipo: el.dataset.t }); toast(el.dataset.t === 'conta' ? 'Conta solicitada. O garçom já vem.' : 'Garçom chamado para a Mesa ' + pad(MESA) + '.'); } catch (err) { toast(err.message); } break;
+    case 'call': chamarGarcom(el); break;
+    case 'conta': abrirConta(); break;
+    case 'cpag': U.contaF.pag = el.dataset.p; renderConta(); break;
+    case 'cpes': U.contaF.pessoas = Math.min(30, Math.max(1, U.contaF.pessoas + +el.dataset.d)); renderConta(); break;
+    case 'send-conta': pedirConta(el); break;
+    case 'add-sug': { const p = prod(id); if (!p || p.esgotado) break; if (p.opcoes.length){ fechar(); openItem(id); } else { addToCart(id, {}, 1); renderCart(); } break; }
   }
 });
 document.addEventListener('input', e => {

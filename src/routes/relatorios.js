@@ -4,6 +4,7 @@ const express = require('express');
 const { doRestaurante } = require('../db');
 const { exigir } = require('../middleware/auth');
 const { ErroApp, rota, texto, numero } = require('../lib/util');
+const notas = require('../lib/notas');
 
 const r = express.Router();
 const dono = exigir('dono');
@@ -39,12 +40,20 @@ r.get('/relatorios', dono, rota(async (req, res) => {
       ${base} GROUP BY 1 ORDER BY 1`, [req.rid])).rows;
     const top = (await c.query(`SELECT i.nome, sum(i.qtd)::int AS q, sum(i.qtd * i.unit) AS v FROM pedido_itens i JOIN pedidos p ON p.id = i.pedido_id JOIN restaurantes r ON r.id = p.restaurante_id
       WHERE p.restaurante_id = $1 AND p.status NOT IN ('cancelado', 'aguardando') AND p.criado_em >= ${ini.sql} GROUP BY i.nome ORDER BY q DESC, v DESC LIMIT 8`, [req.rid])).rows;
+    // Lucro por prato: só itens vendidos com ficha técnica (custo gravado na hora da venda)
+    const lucro = (await c.query(`SELECT i.nome, sum(i.qtd)::int AS q, sum(i.qtd * i.unit) AS receita, sum(i.qtd * i.custo) AS custo
+      FROM pedido_itens i JOIN pedidos p ON p.id = i.pedido_id JOIN restaurantes r ON r.id = p.restaurante_id
+      WHERE p.restaurante_id = $1 AND p.status NOT IN ('cancelado', 'aguardando') AND p.criado_em >= ${ini.sql} AND i.custo IS NOT NULL
+      GROUP BY i.nome ORDER BY sum(i.qtd * (i.unit - i.custo)) DESC LIMIT 30`, [req.rid])).rows
+      .map(x => ({ nome: x.nome, q: x.q, receita: Math.round(x.receita * 100) / 100, custo: Math.round(x.custo * 100) / 100, lucro: Math.round((x.receita - x.custo) * 100) / 100, margem: x.receita ? Math.round((x.receita - x.custo) / x.receita * 1000) / 10 : 0 }));
+    const semFicha = (await c.query(`SELECT count(DISTINCT i.nome)::int AS n FROM pedido_itens i JOIN pedidos p ON p.id = i.pedido_id JOIN restaurantes r ON r.id = p.restaurante_id
+      WHERE p.restaurante_id = $1 AND p.status NOT IN ('cancelado', 'aguardando') AND p.criado_em >= ${ini.sql} AND i.custo IS NULL`, [req.rid])).rows[0].n;
     const mesas = (await c.query(`SELECT m.numero, coalesce(x.n,0)::int AS n, coalesce(x.v,0) AS v FROM
         (SELECT numero FROM mesas WHERE restaurante_id = $1 UNION SELECT DISTINCT mesa FROM pedidos WHERE restaurante_id = $1 AND tipo = 'mesa' AND mesa IS NOT NULL) m
       LEFT JOIN (SELECT p.mesa, count(*) AS n, sum(p.total) AS v ${base} AND p.tipo = 'mesa' GROUP BY p.mesa) x ON x.mesa = m.numero ORDER BY m.numero`, [req.rid])).rows;
     const lim = (await c.query(`SELECT ${ini.sql} AS inicio, now() AS fim, (SELECT min(criado_em) FROM pedidos WHERE restaurante_id = $1) AS primeiro FROM restaurantes r WHERE r.id = $1`, [req.rid])).rows[0];
     return { periodo, granularidade: hora ? 'hora' : 'dia', inicio: ini.dias == null ? lim.primeiro : lim.inicio, fim: lim.fim, fuso: rest.fuso,
-      premissas: premissasDe(rest), canais: porCanal, serie, top, mesas, recursoMesa: rest.rec_mesa };
+      premissas: premissasDe(rest), canais: porCanal, serie, top, lucro, semFicha, mesas, recursoMesa: rest.rec_mesa };
   });
   res.json(out);
 }));
@@ -71,7 +80,8 @@ r.get('/historico', dono, rota(async (req, res) => {
     const lista = (await c.query(`SELECT p.id, p.numero, p.tipo, p.mesa, p.cliente_nome, p.entrega_bairro, p.total, p.pag_metodo, p.pag_pago, p.status, p.criado_em,
         (SELECT coalesce(sum(qtd),0)::int FROM pedido_itens i WHERE i.pedido_id = p.id) AS itens
       ${where} ORDER BY p.criado_em DESC LIMIT $${vals.length - 1} OFFSET $${vals.length}`, vals)).rows;
-    return { total: tot.n, valor: tot.v, contagem, pedidos: lista.map(p => ({ id: p.id, numero: p.numero, tipo: p.tipo, mesa: p.mesa, cliente: { nome: p.cliente_nome }, entrega: p.entrega_bairro ? { bairro: p.entrega_bairro } : undefined,
+    const ns = await notas.notasDosPedidos(c, req.rid, lista.map(p => p.id));
+    return { total: tot.n, valor: tot.v, contagem, pedidos: lista.map(p => ({ nota: ns.get(p.id) || null, id: p.id, numero: p.numero, tipo: p.tipo, mesa: p.mesa, cliente: { nome: p.cliente_nome }, entrega: p.entrega_bairro ? { bairro: p.entrega_bairro } : undefined,
       total: p.total, pagamento: { metodo: p.pag_metodo, pago: p.pag_pago }, status: p.status, itens: p.itens, createdAt: p.criado_em })) };
   });
   res.json(out);

@@ -32,11 +32,11 @@ async function api(m, url, corpo){
 let SLUG = '', R = null, P = [], PROMOS = [];
 const S = { rota: 'home', cat: null, q: '', slide: 0, cart: [], ordem: 'rel',
   meus: ler('chef:pedidos', []).filter(x => x && x.id && x.c), token: ler('chef:token', ''), user: ler('chef:user', null),
-  checkout: Object.assign({ tipo: 'delivery', pag: '', nome: '', end: '', compl: '', bairro: '', tel: '', troco: '', obs: '' }, ler('loja:checkout', {})),
+  checkout: Object.assign({ tipo: 'delivery', pag: '', nome: '', end: '', compl: '', bairro: '', bairroTxt: '', tel: '', troco: '', obs: '', quando: 'agora', agDia: '', agEm: '', lat: null, lng: null }, ler('loja:checkout', {})),
   pedidos: [], pedidosCarregados: false, socket: null, aval: {} };
 const salvar = () => {
   gravar('loja:' + SLUG + ':cart', S.cart); gravar('chef:pedidos', S.meus.slice(0, 30)); gravar('chef:token', S.token || null); gravar('chef:user', S.user || null);
-  const C = S.checkout; gravar('loja:checkout', { tipo: C.tipo, pag: C.pag, nome: C.nome, tel: C.tel, end: C.end, compl: C.compl, bairro: C.bairro }); // o CPF não fica salvo no aparelho
+  const C = S.checkout; gravar('loja:checkout', { tipo: C.tipo, pag: C.pag, nome: C.nome, tel: C.tel, end: C.end, compl: C.compl, bairro: C.bairro, bairroTxt: C.bairroTxt, lat: C.lat, lng: C.lng }); // o CPF não fica salvo no aparelho
 };
 const prod = id => P.find(p => p.id === id);
 const noCarrinho = id => S.cart.filter(x => x.id === id).reduce((a, x) => a + x.q, 0);
@@ -73,16 +73,31 @@ function trilho(id, titulo, conteudo, extra, cls){
   return '<section><div class="sec-h"><h2>' + titulo + '</h2><div class="ctrl">' + (extra || '') + '<button class="seta" data-rail="' + id + '" data-dir="-1" aria-label="Anterior">' + ICO.esq + '</button><button class="seta" data-rail="' + id + '" data-dir="1" aria-label="Próximo">' + ICO.dir + '</button></div></div><div class="rail ' + (cls || '') + '" id="' + id + '">' + conteudo + '</div></section>';
 }
 const tiposOnline = () => (R.tipos || []).filter(t => t !== 'mesa');
-const podePedir = () => R.aberto || R.aceitarForaDoHorario;
+const podeAgora = () => R.aberto || R.aceitarForaDoHorario;
+const agenda = () => (R.agendamento && R.agendamento.ativo && R.agendamento.dias) || [];
+const podePedir = () => podeAgora() || agenda().length > 0;
+// Entrega cobrada por distância (em linha reta) a partir do ponto marcado no mapa
+const modoDist = () => !!(R.delivery && R.delivery.modo === 'distancia' && R.delivery.local && (R.delivery.faixas || []).length);
+function infoDist(){
+  const C = S.checkout; if (!modoDist() || C.lat == null || C.lng == null) return null;
+  const k = Mapa.km(R.delivery.local, { lat: C.lat, lng: C.lng }), fx = R.delivery.faixas;
+  return { km: k, faixa: fx.find(x => k <= x.ate) || null, max: fx[fx.length - 1].ate };
+}
+const kmTxt = k => (Math.round(k * 10) / 10).toString().replace('.', ',') + ' km';
+function quandoTxt(iso){
+  const d = new Date(iso), hoje = new Date(), am = new Date(); am.setDate(am.getDate() + 1);
+  const dia = d.toDateString() === hoje.toDateString() ? 'hoje' : d.toDateString() === am.toDateString() ? 'amanhã' : d.toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: '2-digit' });
+  return dia + ' às ' + d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+}
 const categorias = () => (R.categorias || []).concat([...new Set(P.map(p => p.categoria))].filter(c => !(R.categorias || []).includes(c))).filter(c => P.some(p => p.categoria === c));
 
 /* ---------- telas ---------- */
 function infoRest(){
   const d = R.delivery || {}, a = R.avaliacoes || {}, tipos = tiposOnline();
-  const taxas = (d.bairros || []).map(b => b.taxa);
+  const taxas = modoDist() ? R.delivery.faixas.map(f => f.taxa) : (d.bairros || []).map(b => b.taxa);
   return '<section class="rinfo-box"><div class="rinfo"><div><h1>' + esc(R.nome) + '</h1>' + (R.frase ? '<p class="frase">' + esc(R.frase) + '</p>' : '') + '</div>' +
     '<div class="nota-box">' + estrelas(a.media, true, a.qtd) + '</div></div>' +
-    '<div class="metas"><span class="meta ' + (R.aberto ? 'aberto' : 'fechado') + '">' + ICO.relogio + (R.aberto ? 'Aberto agora · até ' + esc(R.fecha) : 'Fechado · abre às ' + esc(R.abre)) + '</span>' +
+    '<div class="metas"><span class="meta ' + (R.aberto ? 'aberto' : 'fechado') + '">' + ICO.relogio + (R.aberto ? 'Aberto agora · até ' + esc(R.fecha) : 'Fechado · abre às ' + esc(R.abre)) + '</span>' + (agenda().length ? '<span class="meta">' + ICO.relogio + 'Aceita pedidos agendados</span>' : '') +
     (tipos.includes('delivery') ? '<span class="meta">' + ICO.moto + 'Entrega em ' + esc(d.tempo) + (taxas.length ? ' · a partir de ' + brl(Math.min(...taxas)) : '') + '</span>' : '') +
     (tipos.includes('retirada') ? '<span class="meta">' + ICO.sacola + 'Retirada em ' + esc(d.tempoRetirada) + '</span>' : '') +
     (tipos.includes('delivery') && d.gratisAcimaDe ? '<span class="meta">Entrega grátis acima de ' + brl(d.gratisAcimaDe) + '</span>' : '') + '</div></section>';
@@ -101,7 +116,7 @@ function telaHome(){
     trilho('r-chef', 'Sugestão do chef', sugest.map(cardPrato).join(''), '<button class="ver" data-go="cardapio">Ver cardápio completo ' + seta + '</button>') +
     (recs.length ? trilho('r-recs', 'Os clientes recomendam', recs.map(a => '<figure class="rec" style="margin:0 0 14px"><div class="av" aria-hidden="true">' + esc(a.nome.split(' ').map(w => w[0]).join('').slice(0, 2)) + '</div><div><h3>' + esc(a.nome) + ' recomenda:</h3><blockquote style="margin:0"><p>' + esc(a.comentario) + '</p></blockquote><div style="margin-top:6px">' + estrelas(a.nota) + '</div></div></figure>').join(''), '', 'recs') : '') +
     '<section class="sobre-box"><div><h2>Sobre o ' + esc(R.nome) + '</h2><p>' + esc(R.sobre || R.frase || '') + '</p></div><div class="sobre-dados"><p><strong>Horário:</strong> ' + esc(R.abre) + ' às ' + esc(R.fecha) + '</p>' +
-      (R.whatsapp ? '<p><strong>WhatsApp:</strong> ' + esc(R.whatsapp) + '</p>' : '') + ((R.delivery.bairros || []).length && tiposOnline().includes('delivery') ? '<p><strong>Entregamos em:</strong> ' + R.delivery.bairros.map(b => esc(b.nome)).join(', ') + '</p>' : '') +
+      (R.whatsapp ? '<p><strong>WhatsApp:</strong> ' + esc(R.whatsapp) + '</p>' : '') + (modoDist() && tiposOnline().includes('delivery') ? '<p><strong>Entregamos até ' + kmTxt(R.delivery.faixas[R.delivery.faixas.length - 1].ate) + ' do restaurante.</strong></p>' : (R.delivery.bairros || []).length && tiposOnline().includes('delivery') ? '<p><strong>Entregamos em:</strong> ' + R.delivery.bairros.map(b => esc(b.nome)).join(', ') + '</p>' : '') +
       '<button class="btn" data-go="cardapio">Ver o cardápio</button></div></section>';
 }
 function telaCardapio(){
@@ -152,15 +167,28 @@ function totais(){
   const sub = itens.reduce((a, i) => a + i.unit * i.q, 0), tipos = tiposOnline();
   let tipo = S.checkout.tipo; if (!tipos.includes(tipo)) tipo = tipos[0];
   const d = R.delivery || {}, bairro = (d.bairros || []).find(b => b.nome === S.checkout.bairro) || (d.bairros || [])[0];
-  const taxa = itens.length && tipo === 'delivery' ? (d.gratisAcimaDe && sub >= d.gratisAcimaDe ? 0 : (bairro ? bairro.taxa : 0)) : 0;
-  return { itens, sub, taxa, total: sub + taxa, n: itens.reduce((a, i) => a + i.q, 0), tipo, bairro };
+  const gratis = !!(d.gratisAcimaDe && sub >= d.gratisAcimaDe), dist = infoDist();
+  let taxa = 0, semPonto = false, foraArea = false;
+  if (itens.length && tipo === 'delivery'){
+    if (modoDist()){ if (!dist) semPonto = true; else if (!dist.faixa) foraArea = true; else taxa = gratis ? 0 : dist.faixa.taxa; }
+    else taxa = gratis ? 0 : (bairro ? bairro.taxa : 0);
+  }
+  return { itens, sub, taxa, total: sub + taxa, n: itens.reduce((a, i) => a + i.q, 0), tipo, bairro, dist, semPonto, foraArea };
 }
 const NOME_PAG = { online: 'No site', pix: 'Pix', cartao: 'Cartão', dinheiro: 'Dinheiro', local: 'No local' };
 function blocoResumo(){
   const t = totais(), C = S.checkout, d = R.delivery || {};
   const pags = t.tipo ? ((R.pagamentos || {})[t.tipo] || []) : [];
   if (!pags.includes(C.pag)) C.pag = pags.find(x => x !== 'online') || pags[0] || '';
-  const abaixo = t.tipo === 'delivery' && d.pedidoMinimo && t.sub < d.pedidoMinimo, fechado = !podePedir(), semCanal = !t.tipo;
+  // Quando: agora ou agendado (se o restaurante estiver fechado, só agendado)
+  const ag = agenda();
+  let quando = C.quando === 'agendar' ? 'agendar' : 'agora';
+  if (!podeAgora() && ag.length) quando = 'agendar';
+  if (!ag.length) quando = 'agora';
+  const dia = ag.find(x => x.data === C.agDia) || ag[0], horaSel = dia ? (dia.horarios.find(h => h.em === C.agEm) || dia.horarios[0]) : null;
+  C.quando = quando; if (dia){ C.agDia = dia.data; C.agEm = horaSel.em; }
+  const abaixo = t.tipo === 'delivery' && d.pedidoMinimo && t.sub < d.pedidoMinimo, fechado = !podeAgora() && quando !== 'agendar', semCanal = !t.tipo;
+  const semLocal = t.tipo === 'delivery' && (t.semPonto || t.foraArea);
   let form = '';
   if (t.itens.length && !semCanal){
     const online = t.tipo === 'delivery' && C.pag === 'online';
@@ -170,10 +198,24 @@ function blocoResumo(){
       : '<label for="nome">Seu nome</label><input id="nome" placeholder="Como chamar você" value="' + esc(C.nome) + '" autocomplete="name" maxlength="60">' +
         '<label for="tel">WhatsApp com DDD</label><input id="tel" inputmode="tel" placeholder="(15) 99999-0000" value="' + esc(C.tel) + '" autocomplete="tel">' +
         (t.tipo === 'delivery' ? '<label for="cpf">CPF</label><input id="cpf" inputmode="numeric" placeholder="000.000.000-00" maxlength="14" value="' + esc(C.cpf || '') + '" autocomplete="off"><p class="dica">Para pagar na entrega pedimos o CPF, para proteger o restaurante de pedidos falsos.</p>' : '');
-    form = (tiposOnline().length > 1 ? '<label>Como receber</label><div class="tipo">' + tiposOnline().map(x => '<button data-tipo="' + x + '" aria-pressed="' + (t.tipo === x) + '">' + (x === 'delivery' ? 'Entrega' : 'Retirar no local') + '</button>').join('') + '</div>' : '') +
-      (t.tipo === 'delivery' ? '<label for="end">Endereço de entrega</label><input id="end" placeholder="Rua e número" value="' + esc(C.end) + '" autocomplete="street-address">' +
+    const distTxt = t.semPonto ? 'Toque no mapa ou arraste o pino até a sua porta.' : t.foraArea ? 'Fica a ' + kmTxt(t.dist.km) + ': fora da área de entrega (até ' + kmTxt(t.dist.max) + ').' : t.dist ? 'A ' + kmTxt(t.dist.km) + ' do restaurante · entrega ' + (t.taxa ? brl(t.taxa) : 'grátis') : '';
+    const endereco = modoDist()
+      ? '<label for="end">Endereço de entrega</label><div class="busca-end"><input id="end" placeholder="Rua e número" value="' + esc(C.end) + '" autocomplete="street-address">' + (R.buscaEndereco ? '<button type="button" class="chip" data-act="buscar-end">Buscar</button>' : '') + '</div>' +
+        (S.endRes ? '<div class="end-res" role="listbox" aria-label="Endereços encontrados">' + (S.endRes.length ? S.endRes.map((x, i) => '<button type="button" data-endres="' + i + '" role="option">' + esc(x.texto) + '</button>').join('') : '<span>Nenhum endereço encontrado. Marque no mapa.</span>') + '</div>' : '') +
+        '<div class="mapa-ent" id="mapa-ent" role="application" aria-label="Mapa da entrega: toque ou arraste o pino até o local"></div>' +
+        '<div class="mapa-acoes"><button type="button" class="chip" data-act="minha-loc">Usar minha localização</button><span class="dist' + (t.foraArea ? ' fora' : '') + '" aria-live="polite">' + distTxt + '</span></div>' +
         '<input id="compl" placeholder="Complemento ou referência (opcional)" value="' + esc(C.compl) + '" aria-label="Complemento ou referência">' +
-        '<label for="bairro">Bairro</label><select id="bairro">' + (d.bairros || []).map(b => '<option value="' + esc(b.nome) + '"' + (t.bairro && b.nome === t.bairro.nome ? ' selected' : '') + '>' + esc(b.nome) + ' · ' + brl(b.taxa) + '</option>').join('') + '</select>' : '<div class="alerta">Retire no restaurante em ' + esc(d.tempoRetirada) + '.</div>') +
+        '<label for="bairro-t">Bairro</label><input id="bairro-t" placeholder="Seu bairro" value="' + esc(C.bairroTxt || '') + '" autocomplete="address-level3">'
+      : '<label for="end">Endereço de entrega</label><input id="end" placeholder="Rua e número" value="' + esc(C.end) + '" autocomplete="street-address">' +
+        '<input id="compl" placeholder="Complemento ou referência (opcional)" value="' + esc(C.compl) + '" aria-label="Complemento ou referência">' +
+        '<label for="bairro">Bairro</label><select id="bairro">' + (d.bairros || []).map(b => '<option value="' + esc(b.nome) + '"' + (t.bairro && b.nome === t.bairro.nome ? ' selected' : '') + '>' + esc(b.nome) + ' · ' + brl(b.taxa) + '</option>').join('') + '</select>';
+    const blocoQuando = ag.length ? '<label>Quando</label><div class="tipo">' + (podeAgora() ? '<button data-quando="agora" aria-pressed="' + (quando === 'agora') + '">' + (t.tipo === 'delivery' ? 'O quanto antes' : 'Agora') + '</button>' : '') + '<button data-quando="agendar" aria-pressed="' + (quando === 'agendar') + '">Agendar horário</button></div>' +
+      (quando === 'agendar' ? '<div class="ag-sel"><label class="sr" for="ag-dia">Dia</label><select id="ag-dia">' + ag.map(x => '<option value="' + x.data + '"' + (x === dia ? ' selected' : '') + '>' + esc(x.rotulo) + '</option>').join('') + '</select>' +
+        '<label class="sr" for="ag-hora">Horário</label><select id="ag-hora">' + dia.horarios.map(h => '<option value="' + h.em + '"' + (h === horaSel ? ' selected' : '') + '>' + h.hora + '</option>').join('') + '</select></div>' +
+        '<p class="dica">' + (t.tipo === 'delivery' ? 'Entregamos perto desse horário.' : 'Seu pedido fica pronto nesse horário.') + (podeAgora() ? '' : ' Estamos fechados agora, mas você já pode agendar.') + '</p>' : '') : '';
+    form = (tiposOnline().length > 1 ? '<label>Como receber</label><div class="tipo">' + tiposOnline().map(x => '<button data-tipo="' + x + '" aria-pressed="' + (t.tipo === x) + '">' + (x === 'delivery' ? 'Entrega' : 'Retirar no local') + '</button>').join('') + '</div>' : '') +
+      blocoQuando +
+      (t.tipo === 'delivery' ? endereco : '<div class="alerta">Retire no restaurante' + (quando === 'agendar' ? ' no horário escolhido' : ' em ' + esc(d.tempoRetirada)) + '.</div>') +
       '<label>Pagamento</label><div class="pag" style="grid-template-columns:repeat(' + pags.length + ',1fr)">' + pags.map(o => '<button data-pag="' + o + '" aria-pressed="' + (C.pag === o) + '">' + NOME_PAG[o] + '</button>').join('') + '</div>' +
       (online ? '<p class="dica">Cartão ou Pix, pago agora pelo site. O restaurante recebe o pedido assim que o pagamento é aprovado.</p>' : '') +
       (C.pag === 'dinheiro' ? '<label for="troco">Troco para (opcional)</label><input id="troco" type="number" min="0" placeholder="Ex.: 100" value="' + esc(C.troco) + '">' : '') +
@@ -184,20 +226,22 @@ function blocoResumo(){
   return '<aside class="resumo" aria-label="Seu pedido">' + ICO.carr + '<h2>Seu pedido</h2>' +
     (t.itens.length ? '<div class="itens">' + t.itens.map(i => '<div class="lin"><span>' + i.q + '× ' + esc(i.p.nome) + (nomesSel(i.p, i.x.sel).length ? '<br><small>' + esc(nomesSel(i.p, i.x.sel).join(', ')) + '</small>' : '') + '</span><span>' + brl(i.unit * i.q) + '</span></div>').join('') + '</div>' : '<p class="vz">Seu carrinho está vazio. Toque em + para adicionar.</p>') +
     '<div class="lin" style="border-top:1px solid rgb(255 255 255 / .35);padding-top:10px"><span>Subtotal</span><span>' + brl(t.sub) + '</span></div>' +
-    (t.tipo === 'delivery' && t.itens.length ? '<div class="lin"><span>Taxa de entrega' + (d.gratisAcimaDe && t.sub < d.gratisAcimaDe ? '<br><small>grátis acima de ' + brl(d.gratisAcimaDe) + '</small>' : '') + '</span><span>' + (t.taxa ? brl(t.taxa) : 'Grátis') + '</span></div>' : '') +
+    (t.tipo === 'delivery' && t.itens.length ? '<div class="lin"><span>Taxa de entrega' + (t.dist && t.dist.faixa ? ' · ' + kmTxt(t.dist.km) : '') + (d.gratisAcimaDe && t.sub < d.gratisAcimaDe ? '<br><small>grátis acima de ' + brl(d.gratisAcimaDe) + '</small>' : '') + '</span><span>' + (t.semPonto || t.foraArea ? '—' : t.taxa ? brl(t.taxa) : 'Grátis') + '</span></div>' : '') +
     '<div class="lin tot"><span>Total</span><span>' + brl(t.total) + '</span></div>' + form +
     (semCanal ? '<div class="alerta">Este restaurante não está recebendo pedidos pelo site agora. Fale com ele pelo WhatsApp.</div>' : '') +
-    '<button class="pedir" data-act="pedir" id="pedir"' + (t.itens.length && !abaixo && !fechado && !semCanal ? '' : ' disabled') + '>' + ICO.check + (online ? 'Ir para o pagamento' : 'Pedir agora') + '</button>' +
+    '<button class="pedir" data-act="pedir" id="pedir"' + (t.itens.length && !abaixo && !fechado && !semCanal && !semLocal ? '' : ' disabled') + '>' + ICO.check + (online ? 'Ir para o pagamento' : quando === 'agendar' ? 'Agendar pedido' : 'Pedir agora') + '</button>' +
     (t.itens.length && !online && !semCanal ? '<p class="semcad">Sem cadastro e sem senha. Seu nome e WhatsApp ficam só neste aparelho para o próximo pedido.</p>' : '') + '</aside>';
 }
 function telaCarrinho(){
   const t = totais();
   if (!t.itens.length) return '<section><div class="sec-h"><h2>Carrinho</h2></div><div class="vazio-g"><strong>Seu carrinho está vazio</strong>Escolha os pratos no cardápio e toque em +.<div style="margin-top:14px"><button class="btn" data-go="cardapio">Ver o cardápio</button></div></div></section>';
   const base = S.ultimo ? prod(S.ultimo.id) : t.itens[t.itens.length - 1].p;
-  const mais = base ? P.filter(x => x.categoria === base.categoria && !x.esgotado && !S.cart.some(c => c.id === x.id)).slice(0, 6) : [];
+  const peca = Sugestoes.escolher(P, S.cart.map(c => c.id), 4), idsPeca = new Set(peca.map(x => x.id));
+  const mais = base ? P.filter(x => x.categoria === base.categoria && !x.esgotado && !S.cart.some(c => c.id === x.id) && !idsPeca.has(x.id)).slice(0, 6) : [];
   return (S.ultimo ? '<div class="adicionado" role="status">' + ICO.check + '<span><strong>' + esc(S.ultimo.nome) + '</strong> adicionado ao carrinho</span><button class="chip" data-act="continuar">Continuar comprando</button></div>' : '') +
     '<div class="rpage"><div><div class="sec-h"><h2>Carrinho</h2><button class="ver" data-act="continuar">Adicionar mais itens ' + seta + '</button></div>' +
     t.itens.map(i => '<div class="item">' + foto(i.p.fotoUrl, i.p.nome, 'th', i.p.nome[0]) + '<div style="min-width:0"><h3>' + esc(i.p.nome) + '</h3><p>' + esc(nomesSel(i.p, i.x.sel).join(', ') || i.p.descricao) + '</p></div><div class="lado"><span class="preco">' + brl(i.unit * i.q) + '</span><div class="step"><button data-linha-menos="' + esc(i.x.k) + '" aria-label="Tirar um">−</button><span>' + i.q + '</span><button data-linha-mais="' + esc(i.x.k) + '" aria-label="Adicionar um">+</button></div></div></div>').join('') +
+    (peca.length ? '<section class="mais peca"><div class="sec-h"><h2>Peça também</h2><span class="nota">Combina com o seu pedido</span></div><div class="grid-r mini">' + peca.map(cardPrato).join('') + '</div></section>' : '') +
     (mais.length ? '<section class="mais"><div class="sec-h"><h2>Mais opções de ' + esc(base.categoria.toLowerCase()) + '</h2></div><div class="grid-r mini">' + mais.map(cardPrato).join('') + '</div></section>' : '') +
     '</div>' + blocoResumo() + '</div>';
 }
@@ -213,6 +257,7 @@ function telaPedidos(){
     const pix = p.pagamento.metodo === 'pix' && !p.pagamento.pago && !canc;
     return '<article class="ped"><div class="ped-h"><div><h3>Pedido #' + p.numero + '</h3><small>' + new Date(p.criadoEm).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) + ' · ' + p.linhas.map(x => x.qtd + '× ' + esc(x.nome)).join(', ') + '</small></div>' +
       '<div style="display:flex;gap:10px;align-items:center"><span class="badge' + (p.status === 'entregue' ? ' ok' : '') + '">' + STATUS_TXT[p.status] + '</span><strong class="preco">' + brl(p.total) + '</strong></div></div>' +
+      (p.agendadoPara && !canc && p.status !== 'entregue' ? '<p class="agendado">' + ICO.relogio + 'Agendado para ' + esc(quandoTxt(p.agendadoPara)) + '</p>' : '') +
       (p.status === 'aguardando' ? '<div class="pixped"><span>' + (p.pagamento.online === 'recusado' ? 'O pagamento não foi aprovado. Tente de novo ou use outro cartão.' : 'Falta pagar para o restaurante receber o pedido.') + '</span>' + (m ? '<a class="btn" href="/pagar/' + esc(p.id) + '?c=' + encodeURIComponent(m.c) + '">Pagar agora</a>' : '') + '</div>' :
        canc ? '<p style="margin:0;color:var(--muted)">' + (p.pagamento.metodo === 'online' && !p.pagamento.pago ? 'O pagamento não foi concluído a tempo, então o pedido foi cancelado. Nada foi cobrado.' : 'O restaurante cancelou este pedido. Se você já pagou, fale com o restaurante para o estorno.') + '</p>' :
        '<div class="trilha">' + etapas(p).map(e => '<div class="' + (ORDEM.indexOf(e[0]) <= cur ? 'on' : '') + '">' + e[1] + (e[0] === 'rota' && p.entregador && cur >= 3 ? ' com ' + esc(p.entregador.nome) : '') + '</div>').join('') + '</div>') +
@@ -225,7 +270,7 @@ function telaPedidos(){
 
 /* ---------- render ---------- */
 let autoplay;
-const CHAVES_FOCO = ['add', 'menos', 'pag', 'tipo', 'cat', 'rail', 'act', 'nota', 'linhaMais', 'linhaMenos'];
+const CHAVES_FOCO = ['add', 'menos', 'pag', 'tipo', 'quando', 'cat', 'rail', 'act', 'nota', 'linhaMais', 'linhaMenos'];
 function render(){
   const app = $('#app');
   const ae = document.activeElement; let foco = null;
@@ -237,6 +282,21 @@ function render(){
   if (S.rota === 'home'){ irSlide(S.slide, true); iniciarAuto(); } else clearInterval(autoplay);
   $$('.rail').forEach(r => { atualizarSetas(r); r.addEventListener('scroll', () => atualizarSetas(r), { passive: true }); });
   if (foco){ const n = app.querySelector(foco); if (n) n.focus({ preventScroll: true }); }
+  montarMapaEntrega();
+}
+function montarMapaEntrega(){
+  const el = $('#mapa-ent'); if (!el) return;
+  const C = S.checkout, f = R.delivery.faixas;
+  Mapa.criar(el, { ponto: C.lat != null ? { lat: C.lat, lng: C.lng } : null, centro: R.delivery.local, zoom: S.mapaZoom || (C.lat != null ? 16 : 13), restaurante: R.delivery.local, raioKm: f[f.length - 1].ate,
+    aoMover: (lat, lng, z) => { C.lat = lat; C.lng = lng; S.mapaZoom = z; salvar(); render(); completarPeloMapa(lat, lng); } })
+    .catch(() => { el.innerHTML = '<p class="vz" style="padding:12px">Não foi possível carregar o mapa. Atualize a página.</p>'; });
+}
+// Depois de marcar no mapa, preenche rua e bairro se ainda estiverem vazios
+async function completarPeloMapa(lat, lng){
+  const C = S.checkout; if (!R.buscaEndereco || (C.end.trim() && (C.bairroTxt || '').trim())) return;
+  try { const e = (await api('GET', '/api/r/' + encodeURIComponent(SLUG) + '/endereco/reverso?lat=' + lat + '&lng=' + lng)).endereco; if (!e) return;
+    let mudou = false; if (!C.end.trim() && e.rua){ C.end = e.rua; mudou = true; } if (!(C.bairroTxt || '').trim() && e.bairro){ C.bairroTxt = e.bairro; mudou = true; }
+    if (mudou){ salvar(); render(); } } catch (err) {}
 }
 function ir(rota, extra){
   if (rota !== 'carrinho') S.ultimo = null; // a mensagem de "adicionado" só aparece logo depois de adicionar
@@ -284,6 +344,20 @@ function abrirOpcoes(p){
 function selDoForm(p, form){ const f = form || '#f-op', sel = {}; (p.opcoes || []).forEach((o, oi) => { const v = $$(f + ' input[name="o' + oi + '"]:checked').map(i => +i.value); if (v.length) sel[oi] = v; }); return sel; }
 function atualizarOpcoes(){ const f = $('#f-op'); if (!f) return; const p = prod(f.dataset.id); $('#op-ok').textContent = 'Adicionar · ' + brl(unitario(p, selDoForm(p))); }
 
+/* ---------- endereço no mapa ---------- */
+async function buscarEndereco(){
+  const q = (S.checkout.end || '').trim(); if (q.length < 4){ toast('Digite a rua e o número.'); return; }
+  try { S.endRes = (await api('GET', '/api/r/' + encodeURIComponent(SLUG) + '/endereco?q=' + encodeURIComponent(q + (S.checkout.bairroTxt ? ', ' + S.checkout.bairroTxt : '')))).resultados; render(); }
+  catch (e) { toast(e.message); }
+}
+function minhaLocalizacao(btn){
+  if (!navigator.geolocation){ toast('Seu aparelho não informa a localização. Marque no mapa.'); return; }
+  btn.disabled = true; btn.textContent = 'Localizando…';
+  navigator.geolocation.getCurrentPosition(pos => {
+    const C = S.checkout; C.lat = pos.coords.latitude; C.lng = pos.coords.longitude; S.mapaZoom = 17; salvar(); render(); completarPeloMapa(C.lat, C.lng);
+  }, () => { btn.disabled = false; btn.textContent = 'Usar minha localização'; toast('Não deu para pegar sua localização. Marque no mapa.'); }, { enableHighAccuracy: true, timeout: 12000 });
+}
+
 /* ---------- pedido ---------- */
 let pedirDepoisDoLogin = false;
 async function pedir(){
@@ -297,21 +371,27 @@ async function pedir(){
     if (t.tipo === 'delivery' && !cpfValido(cpf)){ toast(cpf ? 'CPF inválido. Confira os números.' : 'Para pagar na entrega, informe seu CPF.'); const i = $('#cpf'); if (i) i.focus(); return; }
   }
   if (t.tipo === 'delivery' && C.end.trim().length < 4){ toast('Informe a rua e o número para a entrega.'); const i = $('#end'); if (i) i.focus(); return; }
+  if (t.tipo === 'delivery' && modoDist()){
+    if (t.semPonto){ toast('Marque no mapa o local da entrega.'); return; }
+    if (t.foraArea){ toast('Esse endereço fica fora da área de entrega.'); return; }
+    if ((C.bairroTxt || '').trim().length < 2){ toast('Informe o bairro.'); const i = $('#bairro-t'); if (i) i.focus(); return; }
+  }
   const btn = $('#pedir'); btn.disabled = true; btn.textContent = 'Enviando…';
   try {
     const d = await api('POST', '/api/r/' + encodeURIComponent(SLUG) + '/pedidos', {
       tipo: t.tipo, cliente: online ? undefined : { nome, tel, cpf: t.tipo === 'delivery' ? cpf : undefined },
-      entrega: t.tipo === 'delivery' ? { endereco: C.end, complemento: C.compl, bairro: t.bairro && t.bairro.nome } : undefined,
+      entrega: t.tipo === 'delivery' ? (modoDist() ? { endereco: C.end, complemento: C.compl, bairro: C.bairroTxt, lat: C.lat, lng: C.lng } : { endereco: C.end, complemento: C.compl, bairro: t.bairro && t.bairro.nome }) : undefined,
+      agendarPara: C.quando === 'agendar' && agenda().length ? C.agEm : undefined,
       itens: t.itens.map(i => ({ produto: i.p.id, qtd: i.q, escolhas: i.x.sel })), obs: C.obs, pagamento: { metodo: C.pag, troco: C.pag === 'dinheiro' ? C.troco : 0 } });
     S.meus = [{ id: d.pedido.id, c: d.codigo }].concat(S.meus.filter(x => x.id !== d.pedido.id)).slice(0, 30);
     S.cart = []; C.troco = ''; C.obs = ''; salvar();
     if (d.pagamento && d.pagamento.url){ location.href = d.pagamento.url; return; }
     conectarTempoReal();
-    toast('Pedido #' + d.pedido.numero + ' enviado!');
+    toast('Pedido #' + d.pedido.numero + (d.pedido.agendadoPara ? ' agendado para ' + quandoTxt(d.pedido.agendadoPara) : ' enviado!'));
     ir('pedidos');
   } catch (e) {
     toast(e.message); render();
-    if (e.status === 409 || e.status === 400 && /produto/i.test(e.message)) recarregarCardapio();
+    if (e.status === 409 || e.status === 400 && /produto/i.test(e.message)) recarregarCardapio(); // inclui horário de agendamento que passou
   }
 }
 async function recarregarCardapio(){ try { await carregar(); render(); } catch (e) {} }
@@ -376,6 +456,8 @@ document.addEventListener('click', async e => {
   if (d.ir){ irSlide(Number(d.ir)); iniciarAuto(); return; }
   if (d.pag){ S.checkout.pag = d.pag; salvar(); render(); return; }
   if (d.tipo){ S.checkout.tipo = d.tipo; salvar(); render(); return; }
+  if (d.quando){ S.checkout.quando = d.quando; render(); return; }
+  if (d.endres !== undefined){ const x = S.endRes && S.endRes[+d.endres]; if (!x) return; const C = S.checkout; C.lat = x.lat; C.lng = x.lng; if (x.bairro && !(C.bairroTxt || '').trim()) C.bairroTxt = x.bairro; if (x.rua && !/\d/.test(C.end)) C.end = x.rua; S.endRes = null; S.mapaZoom = 17; salvar(); render(); return; }
   if (d.copiar){ try { await navigator.clipboard.writeText(d.copiar); toast('Chave Pix copiada'); } catch (err) { toast('Selecione e copie a chave'); } return; }
   if (d.nota){ const [id, n] = d.nota.split(':'); S.aval[id] = +n; $$('[data-nota^="' + id + ':"]').forEach(b => { const k = +b.dataset.nota.split(':')[1]; b.classList.toggle('on', k <= +n); b.setAttribute('aria-checked', String(k === +n)); }); return; }
   if (d.avaliar){ const id = d.avaliar; if (!S.aval[id]){ toast('Escolha de 1 a 5 estrelas.'); return; }
@@ -394,6 +476,8 @@ document.addEventListener('click', async e => {
     case 'qtd-menos': S.qtdProd = Math.max(1, (S.qtdProd || 1) - 1); atualizarProd(); break;
     case 'limpar-q': S.q = ''; $('#busca').value = ''; render(); break;
     case 'pedir': pedir(); break;
+    case 'buscar-end': buscarEndereco(); break;
+    case 'minha-loc': minhaLocalizacao(el); break;
     case 'login': pedirDepoisDoLogin = false; abrirLogin(); break;
     case 'sair': sairDaConta(); render(); toast('Você saiu da conta'); break;
     case 'modo-entrar': abrirLogin('', 'entrar'); break;
@@ -423,6 +507,7 @@ document.addEventListener('input', e => {
   if (t.closest && t.closest('#f-op')){ atualizarOpcoes(); return; }
   if (t.closest && t.closest('#f-prod')){ atualizarProd(); return; }
   if (['end', 'compl', 'tel', 'nome'].includes(t.id)){ C[t.id] = t.value; salvar(); return; }
+  if (t.id === 'bairro-t'){ C.bairroTxt = t.value; salvar(); return; }
   if (t.id === 'troco' || t.id === 'obs'){ C[t.id] = t.value; return; }
   if (t.id === 'cpf' || t.id === 'l-cpf'){ const v = fmtCpf(t.value); if (v !== t.value) t.value = v; if (t.id === 'cpf') C.cpf = v; return; } // o CPF não fica salvo no aparelho
 });
@@ -432,6 +517,8 @@ document.addEventListener('change', e => {
   if (t.closest && t.closest('#f-prod')){ atualizarProd(); return; }
   if (t.id === 'f-ordem'){ S.ordem = t.value; render(); }
   if (t.id === 'bairro'){ S.checkout.bairro = t.value; salvar(); render(); }
+  if (t.id === 'ag-dia'){ S.checkout.agDia = t.value; S.checkout.agEm = ''; render(); }
+  if (t.id === 'ag-hora'){ S.checkout.agEm = t.value; }
 });
 function mostrarSugest(v){
   const box = $('#sugest'), q = norm(v.trim());
@@ -442,6 +529,7 @@ function mostrarSugest(v){
     ps.map(p => '<button data-sug="' + p.id + '">' + foto(p.fotoUrl, '', '', p.nome[0]) + '<span><strong>' + esc(p.nome) + '</strong><small>' + esc(p.categoria) + ' · ' + brl(p.preco) + '</small></span></button>').join('')) || '<div class="vazio">Nada encontrado para “' + esc(v) + '”.</div>';
   box.hidden = false;
 }
+document.addEventListener('keydown', e => { if (e.key === 'Enter' && e.target.id === 'end' && modoDist() && R.buscaEndereco){ e.preventDefault(); buscarEndereco(); } });
 $('#busca').addEventListener('keydown', e => { if (e.key === 'Enter'){ $('#sugest').hidden = true; ir('cardapio', { q: e.target.value.trim(), cat: null }); } });
 document.addEventListener('pointerdown', e => { if (!e.target.closest('.busca')) $('#sugest').hidden = true; });
 

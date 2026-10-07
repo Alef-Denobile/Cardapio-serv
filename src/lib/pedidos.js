@@ -1,6 +1,7 @@
 // Monta e valida um pedido a partir do que o cliente enviou.
 // Regra de ouro: preços e taxas vêm SEMPRE do banco, nunca do navegador.
-const { ErroApp, texto, numero, centavos, iguais, estaAberto, uuidValido, cpfValido, soDigitos } = require('./util');
+const { ErroApp, texto, numero, centavos, iguais, estaAberto, uuidValido, cpfValido, soDigitos, horariosAgendamento, distanciaKm, coordValida } = require('./util');
+const estoque = require('./estoque');
 const pagamentos = require('./pagamentos');
 const { recursosDe } = require('./recursos');
 
@@ -21,11 +22,28 @@ function tiposPermitidos(rest) {
 // c = conexão já no contexto do restaurante (doRestaurante)
 async function montarPedido(c, rest, corpo) {
   if (!rest.ativo) throw new ErroApp(403, 'Este restaurante não está recebendo pedidos.');
-  if (!rest.aceitarForaDoHorario && !estaAberto(rest)) throw new ErroApp(409, `O restaurante está fechado agora. Abrimos às ${rest.abre}.`);
 
   const tipo = corpo.tipo;
   if (!METODOS[tipo]) throw new ErroApp(400, 'Escolha como quer receber o pedido.');
-  if (!tiposPermitidos(rest).includes(tipo)) throw new ErroApp(409, { mesa: 'Este restaurante não recebe pedidos pela mesa.', retirada: 'Este restaurante não está fazendo retirada no balcão.', delivery: 'Este restaurante não está fazendo entregas no momento.' }[tipo]);
+
+  // Totem de autoatendimento: só com o código secreto do totem do restaurante
+  const totem = corpo.totem ? texto(corpo.totem, 40) : '';
+  if (totem) {
+    if (!recursosDe(rest).totem || !rest.totemToken || !iguais(rest.totemToken, totem)) throw new ErroApp(403, 'Este totem não está liberado. Peça ajuda no caixa.');
+    if (tipo !== 'retirada') throw new ErroApp(400, 'O totem faz pedidos para retirar no balcão.');
+  } else if (!tiposPermitidos(rest).includes(tipo)) throw new ErroApp(409, { mesa: 'Este restaurante não recebe pedidos pela mesa.', retirada: 'Este restaurante não está fazendo retirada no balcão.', delivery: 'Este restaurante não está fazendo entregas no momento.' }[tipo]);
+
+  // Pedido agendado: o horário precisa ser um dos oferecidos agora
+  let agendadoPara = null;
+  if (corpo.agendarPara && tipo !== 'mesa' && !totem) {
+    if (!(rest.agendamento && rest.agendamento.ativo)) throw new ErroApp(409, 'Este restaurante não está aceitando pedidos agendados.');
+    const alvo = new Date(String(corpo.agendarPara));
+    if (isNaN(alvo)) throw new ErroApp(400, 'Escolha o dia e o horário do pedido agendado.');
+    const livres = horariosAgendamento(rest).flatMap(d => d.horarios.map(h => h.em));
+    if (!livres.includes(alvo.toISOString())) throw new ErroApp(409, 'Esse horário não está mais disponível. Escolha outro.');
+    agendadoPara = alvo;
+  }
+  if (!agendadoPara && !rest.aceitarForaDoHorario && !estaAberto(rest)) throw new ErroApp(409, `O restaurante está fechado agora. Abrimos às ${rest.abre}.` + (rest.agendamento && rest.agendamento.ativo && tipo !== 'mesa' && !totem ? ' Você pode agendar o pedido para mais tarde.' : ''));
 
   let mesa = null;
   if (tipo === 'mesa') {
@@ -58,21 +76,49 @@ async function montarPedido(c, rest, corpo) {
     return { produto: p.id, nome: p.nome, qtd, unit: centavos(unit), opcoes: nomes };
   });
 
+  // Estoque pela ficha técnica: prato sem insumo suficiente não pode ser pedido. Guarda o custo para o lucro por prato.
+  const fichas = await estoque.fichasDe(c, rest.id, [...new Set(linhas.map(l => l.produto))]);
+  linhas.forEach(l => {
+    const f = fichas.get(l.produto); if (!f) return;
+    const falta = f.find(x => x.estoque < x.qtd * l.qtd);
+    if (falta) throw new ErroApp(409, `${l.nome} acabou de esgotar. Remova do pedido para continuar.`);
+    l.custo = Math.round(f.reduce((a, x) => a + x.qtd * x.custo, 0) * 10000) / 10000;
+  });
+
   const subtotal = centavos(linhas.reduce((a, l) => a + l.unit * l.qtd, 0));
   const servico = tipo === 'mesa' ? centavos(subtotal * rest.taxaServico / 100) : 0;
 
   const cliente = { nome: texto(corpo.cliente && corpo.cliente.nome, 60) || 'Cliente', tel: texto(corpo.cliente && corpo.cliente.tel, 20) };
   let entrega = null, taxaEntrega = 0;
-  if (tipo !== 'mesa' && cliente.tel.replace(/\D/g, '').length < 10) throw new ErroApp(400, 'Informe seu WhatsApp com DDD para o restaurante falar com você.');
+  if (totem) { if (cliente.nome === 'Cliente' || cliente.nome.length < 2) throw new ErroApp(400, 'Diga seu nome para chamarmos quando o pedido ficar pronto.'); }
+  else if (tipo !== 'mesa' && cliente.tel.replace(/\D/g, '').length < 10) throw new ErroApp(400, 'Informe seu WhatsApp com DDD para o restaurante falar com você.');
   if (tipo === 'delivery') {
     const e = corpo.entrega || {};
-    const bairro = rest.delivery.bairros.find(b => b.nome === texto(e.bairro, 60));
-    if (!bairro) throw new ErroApp(400, 'Escolha um bairro atendido pela entrega.');
-    entrega = { endereco: texto(e.endereco, 140), complemento: texto(e.complemento, 60), referencia: texto(e.referencia, 100), bairro: bairro.nome };
+    let taxaBase;
+    if (rest.delivery.modo === 'distancia') {
+      // Taxa por distância: em linha reta entre o restaurante e o ponto marcado no mapa
+      const loc = rest.delivery.local || {}, faixas = rest.delivery.faixas || [];
+      if (!coordValida(loc.lat, loc.lng) || !faixas.length) throw new ErroApp(409, 'A entrega por distância ainda não foi configurada pelo restaurante.');
+      const lat = numero(e.lat, NaN), lng = numero(e.lng, NaN);
+      if (!coordValida(lat, lng)) throw new ErroApp(400, 'Marque no mapa o local da entrega.');
+      const km = Math.round(distanciaKm(loc, { lat, lng }) * 100) / 100, faixa = faixas.find(f => km <= f.ate);
+      if (!faixa) throw new ErroApp(400, `Seu endereço fica a ${String(km.toFixed(1)).replace('.', ',')} km do restaurante, fora da área de entrega (até ${String(faixas[faixas.length - 1].ate).replace('.', ',')} km).`);
+      const bairro = texto(e.bairro, 60);
+      if (bairro.length < 2) throw new ErroApp(400, 'Informe o bairro da entrega.');
+      entrega = { endereco: texto(e.endereco, 140), complemento: texto(e.complemento, 60), referencia: texto(e.referencia, 100), bairro, lat, lng, km };
+      taxaBase = faixa.taxa;
+    } else {
+      const bairro = rest.delivery.bairros.find(b => b.nome === texto(e.bairro, 60));
+      if (!bairro) throw new ErroApp(400, 'Escolha um bairro atendido pela entrega.');
+      entrega = { endereco: texto(e.endereco, 140), complemento: texto(e.complemento, 60), referencia: texto(e.referencia, 100), bairro: bairro.nome };
+      const lat = numero(e.lat, NaN), lng = numero(e.lng, NaN);
+      if (coordValida(lat, lng)) Object.assign(entrega, { lat, lng }); // ponto no mapa, se o cliente marcou: ajuda o entregador
+      taxaBase = bairro.taxa;
+    }
     if (entrega.endereco.length < 4) throw new ErroApp(400, 'Informe a rua e o número para a entrega.');
     if (subtotal < rest.delivery.pedidoMinimo) throw new ErroApp(400, `O pedido mínimo para entrega é R$ ${rest.delivery.pedidoMinimo.toFixed(2).replace('.', ',')}.`);
     const gratis = rest.delivery.gratisAcimaDe > 0 && subtotal >= rest.delivery.gratisAcimaDe;
-    taxaEntrega = gratis ? 0 : bairro.taxa;
+    taxaEntrega = gratis ? 0 : taxaBase;
   }
   const total = centavos(subtotal + servico + taxaEntrega);
 
@@ -88,7 +134,8 @@ async function montarPedido(c, rest, corpo) {
     cliente.cpf = cpf;
   }
 
-  return { status: PAGO_NO_SITE.includes(metodo) ? 'aguardando' : 'novo', tipo, mesa, cliente, entrega, linhas, obs: texto(corpo.obs, 300), subtotal, servico, taxaEntrega, total, pagamento: { metodo, troco } };
+  return { status: PAGO_NO_SITE.includes(metodo) ? 'aguardando' : 'novo', tipo, mesa, cliente, entrega, linhas, obs: texto(corpo.obs, 300), subtotal, servico, taxaEntrega, total, pagamento: { metodo, troco },
+    agendadoPara, origem: totem ? 'totem' : tipo === 'mesa' ? 'mesa' : 'site', consumo: totem ? (corpo.consumo === 'viagem' ? 'viagem' : 'local') : null };
 }
 
 module.exports = { montarPedido, METODOS, PAGO_NO_SITE, metodosPermitidos, tiposPermitidos };

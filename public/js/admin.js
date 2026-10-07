@@ -6,6 +6,8 @@ ajudaSenha('Quem tem acesso ao servidor define uma senha nova com: npm run novo-
 const SELOS = ['vegetariano', 'vegano', 'sem glúten'];
 const PAPEL = { dono: 'Dono', cozinha: 'Cozinha', entregador: 'Entregador' };
 const DESC = {
+  totem: 'Tela de autoatendimento para tablet ou totem no balcão. O dono pega o link em Mesas, QR e totem.',
+  nfce: 'Emissão de NFC-e pelo painel. Precisa de emissor configurado no servidor (FISCAL_PROVEDOR) e dos dados fiscais do restaurante.',
   mesa: 'O cliente pede pelo QR Code da mesa. Desligado, a aba de mesas some do painel do dono.',
   chamados: 'Botões "Chamar garçom" e "Pedir a conta" no celular do cliente.',
   retirada: 'O cliente pede pelo link e retira no balcão.',

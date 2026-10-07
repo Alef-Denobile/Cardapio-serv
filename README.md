@@ -138,6 +138,29 @@ O dono entra no painel e faz o resto: cadastra produtos, ajusta horário, bairro
 
 **Esqueci a senha (cliente):** a tela mostra o contato do suporte (`SUPORTE_WHATSAPP`/`SUPORTE_EMAIL`) e lembra que dá para pagar na entrega sem conta. Envio de link por e-mail fica para depois.
 
+## Recursos de operação
+
+**Peça também.** No carrinho do site, da mesa e do totem aparecem sugestões que combinam com o pedido. O dono marca os produtos em Produtos → "Sugerir no carrinho". Se não marcar nenhum, o sistema sugere bebidas, sobremesas e porções de categorias que ainda não estão no carrinho.
+
+**Garçom e conta pela mesa.** No QR da mesa, o cliente chama o garçom ou abre a conta: vê tudo o que a mesa pediu, a taxa de serviço, escolhe Pix, cartão ou dinheiro e em quantas pessoas vai dividir. O painel mostra o valor, a forma e a divisão, com o botão "Fechar conta (pago)", que marca os pedidos da mesa como pagos. Chamado repetido não duplica: atualiza o que já está aberto.
+
+**Fotos do celular.** Em Produtos e em Configurações (logo e capa), "Enviar foto" abre a câmera ou a galeria. A foto é reduzida no próprio aparelho (cerca de 100 KB) e fica guardada no banco, porque o disco do Render gratuito é apagado a cada deploy. Endereço público: `/f/<id>`. Fotos sem uso há mais de um dia são apagadas sozinhas; limite de 400 por restaurante.
+
+**Pedido agendado (opcional).** Liga em Configurações → Pedido agendado. O cliente escolhe dia e horário (de 30 em 30 minutos, dentro do horário de funcionamento, respeitando a antecedência mínima), inclusive com o restaurante fechado. No painel, o pedido fica em "Agendados para mais tarde" e entra em "Novos" com um aviso sonoro X minutos antes (configurável).
+
+**Taxa por distância.** Em Configurações → Delivery → "Por distância (mapa)": marque o restaurante no mapa e informe as faixas (até 3 km | 6, até 5 km | 8...). O cliente marca a casa no mapa (ou usa a localização do celular) e a taxa sai pela distância em linha reta, conferida no servidor. O mapa é o OpenStreetMap (Leaflet servido pelo próprio servidor); a busca de endereço usa o Nominatim, com cache e limite de 1 busca por segundo. Para volume alto, troque por um serviço pago de geocodificação. `BUSCA_ENDERECO=off` desliga a busca (o cliente só marca no mapa). Pelo QR da mesa, entrega por distância não aparece: o cliente usa o site.
+
+**Estoque e ficha técnica.** Aba Estoque: cadastre os insumos (unidade, quanto tem, mínimo e custo). Na ficha técnica de cada prato (em Produtos), diga quanto ele usa de cada insumo. Cada pedido baixa o estoque sozinho e devolve se for cancelado. Quando um insumo acaba, os pratos que usam ele saem do cardápio e voltam na próxima entrada. A cozinha lança entradas, perdas e contagens, mas não vê custos. O dono vê custo, lucro e margem de cada prato, e o relatório "Lucro por prato" no Histórico usa o custo gravado na hora de cada venda. Adicionais pagos não entram na ficha.
+
+**NFC-e.** Recurso ligado pela área de devs. Com `FISCAL_PROVEDOR=demo` (padrão), as notas são simuladas e o cupom sai marcado "sem valor fiscal", bom para demonstrar. Para emitir de verdade:
+1. Contrate a Focus NFe e cadastre a empresa do restaurante lá, com o certificado digital A1 e o CSC (pedido na SEFAZ do estado).
+2. No Render, defina `FISCAL_PROVEDOR=focusnfe`.
+3. No painel, em Configurações → Nota fiscal, preencha CNPJ, inscrição estadual e o token da empresa. Use "Homologação" para testar e depois "Produção".
+
+A nota sai pelo botão "Emitir NFC-e" no pedido ou no Histórico, ou sozinha ao finalizar o pedido (opção nas configurações; pedidos "pagar no local" precisam que o caixa escolha a forma). Vão na nota só os produtos; taxa de serviço e de entrega ficam de fora. NCM, CFOP e CSOSN têm padrão nas configurações e podem mudar por produto: confirme com o contador. O cancelamento pede um motivo e, na maioria dos estados, só vale até 30 minutos depois da emissão.
+
+**Modo totem.** Em Mesas, QR e totem está o link do totem (com código secreto, como os QR das mesas). Abra-o no tablet ou totem do balcão, de preferência em tela cheia. O cliente escolhe comer aqui ou levar, monta o pedido, diz o nome e paga no caixa ou por Pix. Recebe uma senha grande na tela, que pode ser impressa se marcar a opção. O pedido chega no painel como Retirada, com o selo "Totem". A tela volta sozinha ao início depois de cada pedido e pergunta "Ainda está aí?" quando fica parada. Se o link vazar, gere um novo código.
+
 ## Impressora térmica na cozinha
 
 Funciona com qualquer impressora térmica instalada no computador da cozinha (Elgin, Bematech, Epson, Daruma...), em papel de 80 ou 58 mm. Não precisa de programa extra.

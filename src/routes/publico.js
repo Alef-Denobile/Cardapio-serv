@@ -7,7 +7,8 @@ const { montarPedido, metodosPermitidos, tiposPermitidos, PAGO_NO_SITE } = requi
 const pagamentos = require('../lib/pagamentos');
 const config = require('../config');
 const { recursosDe } = require('../lib/recursos');
-const { ErroApp, rota, texto, numero, tokenAleatorio, iguais, estaAberto, uuidValido, pedidoParaCliente } = require('../lib/util');
+const { ErroApp, rota, texto, numero, tokenAleatorio, iguais, estaAberto, uuidValido, pedidoParaCliente, horariosAgendamento, coordValida } = require('../lib/util');
+const estoque = require('../lib/estoque');
 const rt = require('../realtime');
 const whatsapp = require('../lib/whatsapp');
 const { clienteDoToken } = require('./clientes');
@@ -26,8 +27,9 @@ async function carregar(slug) {
 
 r.get('/r/:slug', rota(async (req, res) => {
   const rest = await carregar(req.params.slug);
-  const { produtos, aval } = await doRestaurante(rest.id, async c => ({
+  const { produtos, resumo, aval } = await doRestaurante(rest.id, async c => ({
     produtos: await repo.listarProdutos(c, rest.id),
+    resumo: await estoque.resumoProdutos(c, rest.id),
     aval: {
       resumo: (await c.query('SELECT round(avg(nota)::numeric, 1) AS media, count(*)::int AS qtd FROM avaliacoes WHERE restaurante_id = $1', [rest.id])).rows[0],
       recentes: (await c.query(`SELECT a.nota, a.comentario, a.criado_em, p.cliente_nome FROM avaliacoes a JOIN pedidos p ON p.id = a.pedido_id
@@ -40,11 +42,14 @@ r.get('/r/:slug', rota(async (req, res) => {
     restaurante: {
       nome: rest.nome, slug: rest.slug, frase: rest.frase, cor: rest.cor, logoUrl: rest.logoUrl, abre: rest.abre, fecha: rest.fecha,
       aberto: estaAberto(rest), aceitarForaDoHorario: rest.aceitarForaDoHorario, taxaServico: rest.taxaServico, chavePix: rest.chavePix, whatsapp: rest.whatsapp,
-      delivery: rest.delivery, categorias: cats, recursos: recursosDe(rest), tipos: tiposPermitidos(rest), capaUrl: rest.capaUrl, sobre: rest.sobre,
+      delivery: Object.assign({}, rest.delivery, { local: coordValida(rest.delivery.local.lat, rest.delivery.local.lng) ? { lat: rest.delivery.local.lat, lng: rest.delivery.local.lng } : null }),
+      agendamento: { ativo: !!rest.agendamento.ativo, dias: horariosAgendamento(rest) }, buscaEndereco: config.buscaEndereco, categorias: cats, recursos: recursosDe(rest), tipos: tiposPermitidos(rest), capaUrl: rest.capaUrl, sobre: rest.sobre,
       avaliacoes: { media: aval.resumo.media, qtd: aval.resumo.qtd, recentes: aval.recentes.map(a => ({ nome: nomeCurto(a.cliente_nome), nota: a.nota, comentario: a.comentario, em: a.criado_em })) },
       pagamentos: { mesa: metodosPermitidos(rest, 'mesa'), retirada: metodosPermitidos(rest, 'retirada'), delivery: metodosPermitidos(rest, 'delivery') }
     },
-    produtos: produtos.map(p => ({ id: p.id, categoria: p.categoria, nome: p.nome, descricao: p.descricao, preco: p.preco, selos: p.selos, opcoes: p.opcoes, fotoUrl: p.fotoUrl, esgotado: p.esgotado, destaque: p.destaque }))
+    // prato sem insumo suficiente no estoque aparece como esgotado (volta sozinho quando o estoque é reposto)
+    produtos: produtos.map(p => ({ id: p.id, categoria: p.categoria, nome: p.nome, descricao: p.descricao, preco: p.preco, selos: p.selos, opcoes: p.opcoes, fotoUrl: p.fotoUrl,
+      esgotado: p.esgotado || !!(resumo.get(p.id) && resumo.get(p.id).semEstoque.length), destaque: p.destaque, sugerir: p.sugerir }))
   });
 }));
 
@@ -73,12 +78,16 @@ r.post('/r/:slug/pedidos', limitePedidos, rota(async (req, res) => {
     if (!cliente.cpf || !cliente.telefone) throw new ErroApp(400, 'Complete seu CPF e WhatsApp na sua conta para pagar pelo site.');
     corpo.cliente = { nome: cliente.nome, tel: cliente.telefone };
   }
+  let alertas = [];
   const p = await doRestaurante(rest.id, async c => {
     const dados = await montarPedido(c, rest, corpo);
     dados.codigoAcomp = tokenAleatorio(12);
     if (cliente) { dados.clienteId = cliente.id; dados.cliente.cpf = cliente.cpf; }
-    return repo.criarPedido(c, rest.id, dados);
+    const criado = await repo.criarPedido(c, rest.id, dados);
+    alertas = await estoque.baixar(c, rest.id, criado.row.id, dados.linhas, 'pedido #' + criado.row.numero);
+    return criado;
   });
+  if (alertas.length) rt.paraEquipe(rest.id, 'estoque:alerta', alertas);
   let pagamento;
   if (p.row.status === 'aguardando') {
     pagamento = await pagamentos.provedor().iniciar(p.obj, p.row.codigo_acomp);
@@ -133,18 +142,91 @@ r.post('/acompanhar/:id/avaliacao', limiteAval, rota(async (req, res) => {
   res.status(201).json({ ok: true });
 }));
 
+// Conta da mesa: pedidos ainda não pagos das últimas 12 horas (o garçom "fecha a conta" no painel e ela zera)
+async function contaDaMesa(c, rid, mesa) {
+  const rows = (await c.query(`SELECT * FROM pedidos WHERE restaurante_id = $1 AND tipo = 'mesa' AND mesa = $2 AND NOT pag_pago
+    AND status NOT IN ('cancelado', 'aguardando') AND criado_em > now() - interval '12 hours' ORDER BY criado_em`, [rid, mesa])).rows;
+  const pedidos = await repo.completarPedidos(c, rows);
+  const soma = k => Math.round(pedidos.reduce((a, p) => a + p[k], 0) * 100) / 100;
+  return { pedidos: pedidos.map(p => ({ numero: p.numero, status: p.status, linhas: p.linhas.map(l => ({ nome: l.nome, qtd: l.qtd, unit: l.unit, opcoes: l.opcoes })), total: p.total, criadoEm: p.createdAt })),
+    subtotal: soma('subtotal'), servico: soma('servico'), total: soma('total') };
+}
+async function validarMesa(c, rest, n, token) {
+  const m = (await c.query('SELECT token FROM mesas WHERE restaurante_id = $1 AND numero = $2', [rest.id, n])).rows[0];
+  if (!m || !iguais(m.token, texto(token, 40))) throw new ErroApp(403, 'QR Code da mesa inválido. Peça ajuda ao garçom.');
+}
+r.get('/r/:slug/mesa/:numero/conta', limiteAcomp, rota(async (req, res) => {
+  const rest = await carregar(req.params.slug);
+  if (!recursosDe(rest).mesa) throw new ErroApp(409, 'Este restaurante não recebe pedidos pela mesa.');
+  const n = Math.trunc(numero(req.params.numero));
+  const conta = await doRestaurante(rest.id, async c => { await validarMesa(c, rest, n, req.query.t); return contaDaMesa(c, rest.id, n); });
+  res.json({ mesa: n, taxaServico: rest.taxaServico, conta });
+}));
+
 r.post('/r/:slug/chamados', limiteChamados, rota(async (req, res) => {
   const rest = await carregar(req.params.slug);
-  const rc = recursosDe(rest);
+  const rc = recursosDe(rest), b = req.body || {};
   if (!rc.mesa || !rc.chamados) throw new ErroApp(409, 'Este restaurante não usa o chamado pelo celular. Chame o garçom no salão.');
-  const n = Math.trunc(numero(req.body && req.body.mesa));
-  const ch = await doRestaurante(rest.id, async c => {
-    const m = (await c.query('SELECT token FROM mesas WHERE restaurante_id = $1 AND numero = $2', [rest.id, n])).rows[0];
-    if (!m || !iguais(m.token, texto(req.body.token, 40))) throw new ErroApp(403, 'QR Code da mesa inválido.');
-    return (await c.query('INSERT INTO chamados (restaurante_id, mesa, tipo) VALUES ($1, $2, $3) RETURNING *', [rest.id, n, req.body.tipo === 'conta' ? 'conta' : 'garcom'])).rows[0];
+  const n = Math.trunc(numero(b.mesa)), tipo = b.tipo === 'conta' ? 'conta' : 'garcom';
+  const pagamento = tipo === 'conta' && ['pix', 'cartao', 'dinheiro'].includes(b.pagamento) ? b.pagamento : '';
+  const pessoas = tipo === 'conta' ? Math.min(30, Math.max(1, Math.trunc(numero(b.pessoas, 1)))) : 1;
+  const out = await doRestaurante(rest.id, async c => {
+    await validarMesa(c, rest, n, b.token);
+    const conta = tipo === 'conta' ? await contaDaMesa(c, rest.id, n) : null;
+    // chamado igual ainda não atendido: atualiza em vez de repetir (evita a equipe receber 5 chamados da mesma mesa)
+    const aberto = (await c.query("SELECT * FROM chamados WHERE restaurante_id = $1 AND mesa = $2 AND tipo = $3 AND NOT atendido AND criado_em > now() - interval '2 hours' ORDER BY criado_em DESC LIMIT 1", [rest.id, n, tipo])).rows[0];
+    if (aberto) {
+      const ch = (await c.query('UPDATE chamados SET pagamento = $2, pessoas = $3, total = $4 WHERE id = $1 RETURNING *', [aberto.id, pagamento, pessoas, conta ? conta.total : 0])).rows[0];
+      return { ch, repetido: true, conta };
+    }
+    const ch = (await c.query('INSERT INTO chamados (restaurante_id, mesa, tipo, pagamento, pessoas, total) VALUES ($1,$2,$3,$4,$5,$6) RETURNING *', [rest.id, n, tipo, pagamento, pessoas, conta ? conta.total : 0])).rows[0];
+    return { ch, repetido: false, conta };
   });
-  rt.paraEquipe(rest.id, 'chamado:novo', { _id: ch.id, mesa: ch.mesa, tipo: ch.tipo, createdAt: ch.criado_em });
-  res.status(201).json({ ok: true });
+  const ch = out.ch, obj = { _id: ch.id, mesa: ch.mesa, tipo: ch.tipo, pagamento: ch.pagamento, pessoas: ch.pessoas, total: ch.total, createdAt: ch.criado_em };
+  rt.paraEquipe(rest.id, out.repetido ? 'chamado:atualizado' : 'chamado:novo', obj);
+  res.status(out.repetido ? 200 : 201).json({ ok: true, repetido: out.repetido, chamado: obj, conta: out.conta });
+}));
+
+// Totem: confere o código secreto do link do totem
+r.get('/r/:slug/totem', rota(async (req, res) => {
+  const rest = await carregar(req.params.slug);
+  res.json({ valido: !!(recursosDe(rest).totem && rest.totemToken && iguais(rest.totemToken, texto(req.query.t, 40))) });
+}));
+
+// Busca de endereço (OpenStreetMap / Nominatim) para a taxa por distância. Com cache e limite, como pede a política de uso deles.
+const limiteBusca = rateLimit({ windowMs: 60 * 1000, limit: 20, standardHeaders: true, legacyHeaders: false, message: { erro: 'Muitas buscas seguidas. Aguarde um pouco ou marque no mapa.' } });
+const cacheBusca = new Map();
+let ultimaBusca = 0;
+async function nominatim(caminho) {
+  if (cacheBusca.has(caminho)) return cacheBusca.get(caminho);
+  const espera = 1100 - (Date.now() - ultimaBusca); if (espera > 0) await new Promise(r => setTimeout(r, espera)); // no máximo 1 busca por segundo
+  ultimaBusca = Date.now();
+  let r;
+  try { r = await fetch('https://nominatim.openstreetmap.org' + caminho, { headers: { 'User-Agent': 'CardapioDigital/1.0 (' + (config.buscaEnderecoContato || config.urlPublica || 'sem-contato') + ')', 'Accept-Language': 'pt-BR' }, signal: AbortSignal.timeout(8000) }); }
+  catch (e) { throw new ErroApp(502, 'A busca de endereço está indisponível agora. Marque o local no mapa.'); }
+  if (!r.ok) throw new ErroApp(502, 'A busca de endereço está indisponível agora. Marque o local no mapa.');
+  const d = await r.json();
+  if (cacheBusca.size > 500) cacheBusca.delete(cacheBusca.keys().next().value);
+  cacheBusca.set(caminho, d);
+  return d;
+}
+const resumoEndereco = x => { const a = x.address || {}; return { lat: Number(x.lat), lng: Number(x.lon), rua: [a.road || a.pedestrian || '', a.house_number || ''].filter(Boolean).join(', '), bairro: a.suburb || a.neighbourhood || a.quarter || a.city_district || '', cidade: a.city || a.town || a.village || '', texto: x.display_name }; };
+r.get('/r/:slug/endereco', limiteBusca, rota(async (req, res) => {
+  if (!config.buscaEndereco) throw new ErroApp(404, 'Busca de endereço desligada. Marque o local no mapa.');
+  const rest = await carregar(req.params.slug), q = texto(req.query.q, 120);
+  if (q.length < 4) throw new ErroApp(400, 'Digite a rua e o número.');
+  const loc = rest.delivery.local || {};
+  const perto = coordValida(loc.lat, loc.lng) ? '&viewbox=' + [loc.lng - 0.25, loc.lat + 0.25, loc.lng + 0.25, loc.lat - 0.25].map(v => v.toFixed(4)).join(',') + '&bounded=1' : '';
+  const d = await nominatim('/search?format=jsonv2&addressdetails=1&limit=5&countrycodes=br' + perto + '&q=' + encodeURIComponent(q));
+  res.json({ resultados: (Array.isArray(d) ? d : []).map(resumoEndereco) });
+}));
+r.get('/r/:slug/endereco/reverso', limiteBusca, rota(async (req, res) => {
+  if (!config.buscaEndereco) throw new ErroApp(404, 'Busca de endereço desligada.');
+  await carregar(req.params.slug);
+  const lat = numero(req.query.lat, NaN), lng = numero(req.query.lng, NaN);
+  if (!coordValida(lat, lng)) throw new ErroApp(400, 'Local inválido.');
+  const d = await nominatim('/reverse?format=jsonv2&addressdetails=1&zoom=18&lat=' + lat.toFixed(5) + '&lon=' + lng.toFixed(5));
+  res.json({ endereco: d && d.lat ? resumoEndereco(d) : null });
 }));
 
 module.exports = r;

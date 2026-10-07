@@ -3,7 +3,7 @@
 -- entre restaurantes (Row Level Security) vale de verdade.
 -- Troque TROQUE-ESTA-SENHA por uma senha forte (só letras e números, para não complicar o endereço).
 
-CREATE ROLE cardapio_app WITH LOGIN PASSWORD 'Cardapio-01';
+CREATE ROLE cardapio_app WITH LOGIN PASSWORD 'TROQUE-ESTA-SENHA';
 GRANT CONNECT ON DATABASE neondb TO cardapio_app;
 GRANT USAGE, CREATE ON SCHEMA public TO cardapio_app;
 

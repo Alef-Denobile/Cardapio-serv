@@ -6,15 +6,17 @@ ajudaSenha('Cozinha ou entregador: peça ao dono do restaurante para criar uma s
 const SELOS = ['vegetariano', 'vegano', 'sem glúten'];
 const PAPEL = { dono: 'Dono', cozinha: 'Cozinha', entregador: 'Entregador' };
 const ABAS = {
-  dono: [['pedidos', 'Pedidos'], ['produtos', 'Produtos'], ['hist', 'Histórico e financeiro'], ['mapa', 'Mapa das mesas'], ['mesas', 'Mesas e QR Codes'], ['equipe', 'Equipe'], ['config', 'Configurações']],
-  cozinha: [['pedidos', 'Pedidos'], ['produtos', 'Produtos']],
+  dono: [['pedidos', 'Pedidos'], ['produtos', 'Produtos'], ['estoque', 'Estoque'], ['hist', 'Histórico e financeiro'], ['mapa', 'Mapa das mesas'], ['mesas', 'Mesas, QR e totem'], ['equipe', 'Equipe'], ['config', 'Configurações']],
+  cozinha: [['pedidos', 'Pedidos'], ['produtos', 'Produtos'], ['estoque', 'Estoque']],
   entregador: [['entregas', 'Minhas entregas']]
 };
 if (typeof qrcode === 'function' && qrcode.stringToBytesFuncs) qrcode.stringToBytes = qrcode.stringToBytesFuncs['UTF-8'];
 
 const S = { token: guardar.ler('painel:token', ''), eu: null, rest: null, aba: '', pedidos: [], chamados: [], finalizadosHoje: 0, entregadores: [], produtos: [], mesas: [], equipe: [], config: null,
   imp: Object.assign({ auto: false, largura: 80 }, guardar.ler('painel:impressora', {})), impAberta: false, impressos: new Set(guardar.ler('painel:impressos', [])),
-  kf: 'todos', hp: '7', hc: 'todos', hq: '', hn: 25, hm: 'n', rel: null, premAberta: false, vistos: new Set(), editId: null, formAberto: false, confirmar: null, socket: null };
+  kf: 'todos', hp: '7', hc: 'todos', hq: '', hn: 25, hm: 'n', rel: null, premAberta: false, vistos: new Set(), editId: null, formAberto: false, confirmar: null, socket: null,
+  estoque: null, insumos: [], movPara: null, movTipo: 'entrada', histIns: null, editIns: null, novoIns: false, agFuturos: new Set(), ficha: null, fotoProd: null, totem: null };
+const temNfce = () => !!(S.rest && S.rest.recursos && S.rest.recursos.nfce);
 const chamar = (m, u, b) => api(m, u, b, S.token).catch(e => { if (e.status === 401) sair(e.message); throw e; });
 
 /* ---------- login ---------- */
@@ -48,7 +50,7 @@ function entrar(){
   render();
 }
 
-function abas(){ const rc = S.rest.recursos || {}; return ABAS[S.eu.papel].filter(t => !['mesas', 'mapa'].includes(t[0]) || rc.mesa !== false); }
+function abas(){ const rc = S.rest.recursos || {}; return ABAS[S.eu.papel].filter(t => t[0] === 'mesas' ? (rc.mesa !== false || rc.totem !== false) : t[0] !== 'mapa' || rc.mesa !== false); }
 
 /* ---------- tempo real ---------- */
 let audio;
@@ -70,11 +72,14 @@ function conectarTempoReal(){
   });
   S.socket.on('chamado:novo', c => { if (S.eu.papel === 'entregador') return; S.chamados.push(c); bip(); toast('Mesa ' + pad(c.mesa) + (c.tipo === 'conta' ? ' pediu a conta' : ' chamou o garçom')); atualizarAbas(); });
   S.socket.on('chamado:atendido', c => { S.chamados = S.chamados.filter(x => x._id !== c._id); atualizarAbas(); });
+  S.socket.on('chamado:atualizado', c => { if (S.eu.papel === 'entregador') return; const i = S.chamados.findIndex(x => x._id === c._id); if (i >= 0) S.chamados[i] = c; else S.chamados.push(c); bip(); toast('Mesa ' + pad(c.mesa) + (c.tipo === 'conta' ? ' atualizou o pedido de conta' : ' chamou o garçom de novo')); atualizarAbas(); });
+  S.socket.on('nota:atualizada', n => { const p = S.pedidos.find(x => x._id === n.pedidoId); if (p) p.nota = n; if (S.aba === 'pedidos') renderPedidos(); if (S.aba === 'hist') carregarHist(); });
+  S.socket.on('estoque:alerta', l => { if (S.eu.papel === 'entregador') return; bip(); toast(l.map(x => x.nome + (x.acabou ? ' acabou' : ' acabando (' + qtdTxt(x.estoque, x.unidade) + ')')).join(' · ')); if (S.aba === 'estoque') renderEstoque(); });
 }
 function upsert(p){
   const i = S.pedidos.findIndex(x => x._id === p._id);
   if (['entregue', 'cancelado'].includes(p.status)){ if (i >= 0) S.pedidos.splice(i, 1); if (p.status === 'entregue') S.finalizadosHoje++; return; }
-  if (i >= 0) S.pedidos[i] = p; else S.pedidos.push(p);
+  if (i >= 0){ if (p.nota === undefined) p.nota = S.pedidos[i].nota; S.pedidos[i] = p; } else S.pedidos.push(p);
 }
 async function carregarPedidos(){
   try { const d = await chamar('GET', '/api/painel/pedidos'); S.pedidos = d.pedidos; S.chamados = d.chamados; S.finalizadosHoje = d.finalizadosHoje; if (!S.vistos.size) d.pedidos.forEach(p => S.vistos.add(p._id)); } catch (e) { if (e.status !== 401) toast(e.message); }
@@ -92,7 +97,7 @@ function renderHead(){
 }
 async function render(){
   renderHead();
-  const f = { pedidos: renderPedidos, entregas: renderEntregas, produtos: renderProdutos, hist: renderHist, mapa: renderMapa, mesas: renderMesas, equipe: renderEquipe, config: renderConfig }[S.aba];
+  const f = { pedidos: renderPedidos, entregas: renderEntregas, produtos: renderProdutos, estoque: renderEstoque, hist: renderHist, mapa: renderMapa, mesas: renderMesas, equipe: renderEquipe, config: renderConfig }[S.aba];
   if (f) await f();
 }
 
@@ -153,11 +158,13 @@ function cartao(p, modo){
   else if (p.status === 'pronto' && dl) acao = S.entregadores.length ? '<div class="ent-sel"><select id="ent-' + p._id + '" aria-label="Entregador">' + S.entregadores.map(x => '<option value="' + x.id + '">' + esc(x.nome) + '</option>').join('') + '</select><button class="btn sm" data-act="despachar" data-id="' + p._id + '">Saiu para entrega</button></div>' : '<span class="note" style="margin:0">Cadastre um entregador na aba Equipe.</span>';
   else if (p.status === 'pronto') acao = '<button class="btn sm" data-act="status" data-s="entregue" data-id="' + p._id + '">' + (p.tipo === 'retirada' ? 'Retirado' : 'Servido') + '</button>';
   else if (p.status === 'rota') acao = '<button class="btn sm ghost" data-act="status" data-s="entregue" data-id="' + p._id + '">Confirmar entrega</button>';
-  const maps = 'https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(ender(p));
+  const maps = p.entrega && p.entrega.lat != null ? 'https://www.google.com/maps/search/?api=1&query=' + p.entrega.lat + ',' + p.entrega.lng : 'https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(ender(p));
+  const extras = (p.agendadoPara ? '<span class="badge b-warn">Agendado · ' + esc(diaHora(p.agendadoPara)) + '</span>' : '') + (p.origem === 'totem' ? '<span class="badge b-neu">Totem · ' + (p.consumo === 'viagem' ? 'para levar' : 'comer aqui') + '</span>' : '');
   const pixPend = p.pagamento.metodo === 'pix' && !p.pagamento.pago;
   return '<div class="ord' + (fresh ? ' fresh' : '') + '"><div class="ord-h"><strong>#' + p.numero + ' · ' + onde(p) + '</strong><span>' + hora(p.createdAt) + ' · ' + ago(p.createdAt) + '</span></div>' +
+    (extras ? '<div class="row" style="margin:0;gap:6px">' + extras + '</div>' : '') +
     '<div class="note" style="margin:0">' + esc(p.cliente && p.cliente.nome) + (p.cliente && p.cliente.tel ? ' · ' + esc(p.cliente.tel) : '') + (p.cliente && p.cliente.cpf ? ' · CPF ' + esc(p.cliente.cpf) : '') + '</div>' +
-    (dl ? '<div class="addr' + (modo === 'ent' ? ' big-addr' : '') + '">' + esc(ender(p)) + (p.entrega.referencia ? '<br><small>Ref.: ' + esc(p.entrega.referencia) + '</small>' : '') + (modo === 'ent' ? '<br><a href="' + esc(maps) + '" target="_blank" rel="noopener">Abrir no mapa</a>' : '') + '</div>' : '') +
+    (dl ? '<div class="addr' + (modo === 'ent' ? ' big-addr' : '') + '">' + esc(ender(p)) + (p.entrega.km != null ? ' · ' + esc(String(p.entrega.km).replace('.', ',')) + ' km' : '') + (p.entrega.referencia ? '<br><small>Ref.: ' + esc(p.entrega.referencia) + '</small>' : '') + (modo === 'ent' ? '<br><a href="' + esc(maps) + '" target="_blank" rel="noopener">Abrir no mapa</a>' : '') + '</div>' : '') +
     (modo === 'ent' ? '' : '<ul>' + p.linhas.map(l => '<li><strong>' + l.qtd + '×</strong> ' + esc(l.nome) + (l.opcoes.length ? ' <small>— ' + esc(l.opcoes.join(', ')) + '</small>' : '') + '</li>').join('') + '</ul>') +
     (p.obs ? '<div class="obs">Obs: ' + esc(p.obs) + '</div>' : '') +
     (p.status === 'rota' && modo !== 'ent' && p.entregador ? '<div class="note" style="margin:0">Com <strong>' + esc(p.entregador.nome) + '</strong></div>' : '') +
@@ -167,16 +174,38 @@ function cartao(p, modo){
       (S.eu.papel !== 'entregador' ? '<button class="mini" data-act="imprimir" data-id="' + p._id + '">Imprimir</button>' : '') +
       (linkWhats(p) ? '<a class="mini" href="' + esc(linkWhats(p)) + '" target="_blank" rel="noopener">WhatsApp do cliente</a>' : '') +
       (pixPend && S.eu.papel !== 'entregador' ? '<button class="mini" data-act="pago" data-id="' + p._id + '">Confirmar Pix recebido</button>' : '') +
+      (temNfce() && S.eu.papel !== 'entregador' && modo !== 'ent' ? botaoNota(p) : '') +
       (dono && modo !== 'ent' && p.status !== 'rota' ? '<button class="mini danger" data-act="cancelar" data-id="' + p._id + '">' + (S.confirmar === 'c' + p._id ? 'Confirmar cancelamento' : 'Cancelar pedido') + '</button>' : '') + '</div></div>';
+}
+// Pedido agendado só entra no quadro da cozinha perto da hora (minutos de preparo configurados pelo dono)
+const preparoMin = () => (S.rest.agendamento && S.rest.agendamento.preparo) || 45;
+const futuro = p => p.status === 'novo' && p.agendadoPara && new Date(p.agendadoPara) - Date.now() > preparoMin() * 60000;
+function diaHora(iso){ const d = new Date(iso), h = new Date(), a = new Date(); a.setDate(a.getDate() + 1); return (d.toDateString() === h.toDateString() ? 'hoje' : d.toDateString() === a.toDateString() ? 'amanhã' : d.toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit', month: '2-digit' })) + ' ' + hora(d); }
+function faltaTxt(iso){ const m = Math.round((new Date(iso) - Date.now()) / 60000); return m < 60 ? 'em ' + m + ' min' : 'em ' + Math.floor(m / 60) + ' h' + (m % 60 ? ' ' + (m % 60) + ' min' : ''); }
+function botaoNota(p){
+  const n = p.nota;
+  if (n && n.status === 'autorizada') return '<a class="mini" href="' + esc(n.urlDanfe || '#') + '" target="_blank" rel="noopener">NFC-e nº ' + esc(n.numero || '') + '</a>';
+  if (n && n.status === 'processando') return '<button class="mini" data-act="nota-atualizar" data-id="' + n.id + '">NFC-e processando… atualizar</button>';
+  return '<button class="mini" data-act="nfce" data-id="' + p._id + '">' + (n && n.status === 'erro' ? 'NFC-e com erro · tentar de novo' : 'Emitir NFC-e') + '</button>';
+}
+function chamadoTxt(c){
+  if (c.tipo !== 'conta') return 'Mesa ' + pad(c.mesa) + ' chamou o garçom';
+  const pg = { pix: 'Pix', cartao: 'cartão', dinheiro: 'dinheiro' }[c.pagamento];
+  return 'Mesa ' + pad(c.mesa) + ' pediu a conta' + (c.total ? ' · <strong>' + brl(c.total) + '</strong>' : '') + (pg ? ' · vai pagar com ' + pg : '') + (c.pessoas > 1 ? ' · dividir em ' + c.pessoas + ' (' + brl(c.total / c.pessoas) + ' cada)' : '');
 }
 function renderPedidos(){
   const KF = S.kf;
-  const lista = S.pedidos.filter(p => KF === 'todos' || p.tipo === KF).sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+  // avisa quando um pedido agendado chega na hora de preparar
+  S.pedidos.forEach(p => { if (futuro(p)) S.agFuturos.add(p._id); else if (S.agFuturos.has(p._id)){ S.agFuturos.delete(p._id); if (p.status === 'novo'){ bip(); toast('Hora de preparar o pedido agendado #' + p.numero + ' (' + hora(p.agendadoPara) + ')'); S.vistos.delete(p._id); } } });
+  const agds = S.pedidos.filter(futuro).filter(p => KF === 'todos' || p.tipo === KF).sort((a, b) => new Date(a.agendadoPara) - new Date(b.agendadoPara));
+  const lista = S.pedidos.filter(p => !futuro(p)).filter(p => KF === 'todos' || p.tipo === KF).sort((a, b) => new Date(a.agendadoPara || a.createdAt) - new Date(b.agendadoPara || b.createdAt));
   const col = (st, t) => { const l = lista.filter(p => p.status === st); return '<div class="col"><h3>' + t + ' <span>' + l.length + '</span></h3>' + (l.map(p => cartao(p)).join('') || '<p class="note" style="padding:4px">Nada por aqui.</p>') + '</div>'; };
   const mostraRota = KF === 'todos' || KF === 'delivery';
   const chips = [['todos', 'Todos'], ['delivery', 'Entrega'], ['retirada', 'Retirada'], ['mesa', 'Mesas']].map(o => '<button class="chip" data-act="kf" data-k="' + o[0] + '" aria-pressed="' + (KF === o[0]) + '">' + o[1] + ' · ' + S.pedidos.filter(p => o[0] === 'todos' || p.tipo === o[0]).length + '</button>').join('');
   $('#pane').innerHTML = '<div class="kbar"><div class="chips">' + chips + '</div><div class="row" style="margin:0;align-items:center"><span class="note" style="margin:0">' + S.finalizadosHoje + ' pedidos finalizados hoje</span><button class="btn sm ghost" data-act="imp-abrir" aria-expanded="' + S.impAberta + '">Impressora' + (S.imp.auto ? ' · automática' : '') + '</button></div></div>' + painelImp() +
-    (S.chamados.length && (KF === 'todos' || KF === 'mesa') ? '<div class="calls">' + S.chamados.map(c => '<div class="call"><span>Mesa ' + pad(c.mesa) + (c.tipo === 'conta' ? ' pediu a conta' : ' chamou o garçom') + ' · ' + ago(c.createdAt) + '</span><button class="btn sm ghost" data-act="atendido" data-id="' + c._id + '">Atendido</button></div>').join('') + '</div>' : '') +
+    (S.chamados.length && (KF === 'todos' || KF === 'mesa') ? '<div class="calls">' + S.chamados.map(c => '<div class="call"><span>' + chamadoTxt(c) + ' · ' + ago(c.createdAt) + '</span><span class="row" style="margin:0;gap:6px">' + (c.tipo === 'conta' ? '<button class="btn sm" data-act="fechar-conta" data-n="' + c.mesa + '">Fechar conta (pago)</button>' : '') + '<button class="btn sm ghost" data-act="atendido" data-id="' + c._id + '">Atendido</button></span></div>').join('') + '</div>' : '') +
+    (agds.length ? '<details class="card agds"' + (S.agdsAberto ? ' open' : '') + ' id="agds"><summary><strong>Agendados para mais tarde</strong> <span class="badge b-warn">' + agds.length + '</span><span class="note" style="margin:0 0 0 auto">entram em “Novos” ' + preparoMin() + ' min antes</span></summary>' +
+      agds.map(p => '<div class="agd"><strong>' + esc(diaHora(p.agendadoPara)) + '</strong><span>#' + p.numero + ' · ' + onde(p) + ' · ' + esc(p.cliente && p.cliente.nome) + '</span><span class="note" style="margin:0">' + p.linhas.map(l => l.qtd + '× ' + esc(l.nome)).join(', ') + '</span><span class="note" style="margin:0">' + faltaTxt(p.agendadoPara) + '</span><button class="mini" data-act="imprimir" data-id="' + p._id + '">Imprimir</button></div>').join('') + '</details>' : '') +
     '<div class="kan" style="--cols:' + (mostraRota ? 4 : 3) + '">' + col('novo', 'Novos') + col('preparo', 'Em preparo') + col('pronto', 'Prontos') + (mostraRota ? col('rota', 'Em entrega') : '') + '</div>';
   setTimeout(() => lista.forEach(p => S.vistos.add(p._id)), 2500);
 }
@@ -199,6 +228,7 @@ async function renderProdutos(){
   $('#pane').innerHTML = '<p class="note">Carregando…</p>';
   try { S.produtos = (await chamar('GET', '/api/painel/produtos')).produtos; } catch (e) { $('#pane').innerHTML = '<p class="erro">' + esc(e.message) + '</p>'; return; }
   if (S.eu.papel === 'dono' && !S.config) { try { S.config = (await chamar('GET', '/api/painel/restaurante')).restaurante; } catch (e) {} }
+  if (S.eu.papel === 'dono') { try { S.insumos = (await chamar('GET', '/api/painel/estoque')).insumos; } catch (e) { S.insumos = []; } }
   desenharProdutos();
 }
 function categorias(){ const c = (S.config && S.config.categorias) || []; return c.concat([...new Set(S.produtos.map(p => p.categoria))].filter(x => !c.includes(x))); }
@@ -214,21 +244,83 @@ function desenharProdutos(){
       '<div class="grid2"><div><label for="p-nome">Nome</label><input id="p-nome" value="' + esc(p ? p.nome : '') + '" placeholder="Ex.: Feijoada da casa"></div><div><label for="p-preco">Preço (R$)</label><input id="p-preco" type="number" step="0.01" min="0" value="' + (p ? p.preco : '') + '"></div></div>' +
       '<label for="p-desc">Descrição</label><input id="p-desc" value="' + esc(p ? p.descricao : '') + '" placeholder="Ingredientes, porção, acompanhamentos">' +
       '<div class="grid2"><div><label for="p-cat">Categoria</label><select id="p-cat">' + cats.map(c => '<option' + (p && p.categoria === c ? ' selected' : '') + '>' + esc(c) + '</option>').join('') + '<option value="__nova">+ Nova categoria…</option></select></div><div id="p-novacat-w"' + (cats.length ? ' hidden' : '') + '><label for="p-novacat">Nome da nova categoria</label><input id="p-novacat" placeholder="Ex.: Porções"></div></div>' +
-      '<label for="p-foto">Endereço da foto (opcional)</label><input id="p-foto" value="' + esc(p ? p.fotoUrl : '') + '" placeholder="https://… (link de uma imagem já publicada)">' +
-      '<label>Selos</label><div class="checks">' + SELOS.map((s, i) => '<label for="p-s' + i + '"><input type="checkbox" id="p-s' + i + '" data-selo="' + s + '"' + (p && p.selos.includes(s) ? ' checked' : '') + '> ' + s + '</label>').join('') + '<label for="p-dest"><input type="checkbox" id="p-dest"' + (p && p.destaque ? ' checked' : '') + '> Destaque da casa</label></div>' +
+      '<label>Foto</label>' + campoFoto('p-foto', p ? p.fotoUrl : '', 'Enviar foto do celular ou computador') +
+      '<label>Selos</label><div class="checks">' + SELOS.map((s, i) => '<label for="p-s' + i + '"><input type="checkbox" id="p-s' + i + '" data-selo="' + s + '"' + (p && p.selos.includes(s) ? ' checked' : '') + '> ' + s + '</label>').join('') + '<label for="p-dest"><input type="checkbox" id="p-dest"' + (p && p.destaque ? ' checked' : '') + '> Destaque da casa</label>' +
+        '<label for="p-sug"><input type="checkbox" id="p-sug"' + (p && p.sugerir ? ' checked' : '') + '> Sugerir no carrinho (“Peça também”)</label></div>' +
       '<div class="grid2"><div><label for="p-o1t">Escolha obrigatória (título)</label><input id="p-o1t" placeholder="Ex.: Ponto da carne" value="' + esc(um ? um.nome : '') + '"></div><div><label for="p-o1c">Opções, separadas por vírgula</label><input id="p-o1c" placeholder="Mal passada, Ao ponto, Bem passada" value="' + esc(um ? um.escolhas.map(ch).join(', ') : '') + '"></div></div>' +
       '<label for="p-add">Adicionais pagos (um por linha: Nome | preço)</label><textarea id="p-add" rows="3" placeholder="Ovo frito | 4&#10;Queijo coalho | 9">' + esc(va ? va.escolhas.map(ch).join('\n') : '') + '</textarea>' +
+      '<details class="sub-card"' + (p && p.ficha && p.ficha.length ? ' open' : '') + '><summary>Ficha técnica e lucro <small class="note">(opcional: baixa o estoque sozinho e mostra quanto o prato dá de lucro)</small></summary>' +
+        (S.insumos.length ? '<div id="ficha-l"></div><div class="row" style="margin:6px 0 0"><button type="button" class="btn sm ghost" data-act="fi-mais">+ Insumo</button></div><p class="note" id="fi-custo"></p>'
+          : '<p class="note">Cadastre os insumos na aba Estoque (ex.: mussarela, pão, batata) para montar a ficha deste prato.</p>') + '</details>' +
+      (temNfce() ? '<details class="sub-card"><summary>Dados fiscais (NFC-e) <small class="note">(deixe em branco para usar o padrão das configurações)</small></summary><div class="grid3">' +
+        '<div><label for="p-ncm">NCM</label><input id="p-ncm" inputmode="numeric" maxlength="10" placeholder="' + esc((S.config && S.config.fiscal && S.config.fiscal.ncm) || '21069090') + '" value="' + esc(p && p.fiscal ? p.fiscal.ncm || '' : '') + '"></div>' +
+        '<div><label for="p-cfop">CFOP</label><input id="p-cfop" inputmode="numeric" maxlength="4" placeholder="' + esc((S.config && S.config.fiscal && S.config.fiscal.cfop) || '5102') + '" value="' + esc(p && p.fiscal ? p.fiscal.cfop || '' : '') + '"></div>' +
+        '<div><label for="p-csosn">CSOSN / CST</label><input id="p-csosn" inputmode="numeric" maxlength="3" placeholder="' + esc((S.config && S.config.fiscal && S.config.fiscal.csosn) || '102') + '" value="' + esc(p && p.fiscal ? p.fiscal.csosn || '' : '') + '"></div></div>' +
+        '<p class="note">Bebidas com substituição tributária costumam usar CFOP 5405 e CSOSN 500. Confirme com o contador.</p></details>' : '') +
       '<div class="row"><button class="btn" type="submit">' + (p ? 'Salvar alterações' : 'Adicionar ao cardápio') + '</button><button class="btn ghost" type="button" data-act="cancelar-prod">Cancelar</button></div></form><h3>Produtos no cardápio</h3>';
   }
   const lista = cats.map((c, ci) => { const l = S.produtos.filter(x => x.categoria === c); if (!l.length) return '';
     return '<p class="table-tag" style="margin:16px 0 0">' + esc(c) + '</p>' + l.map(x => '<div class="adm-item"><div class="ph">' + foto(x, ci) + '</div><div><strong>' + esc(x.nome) + '</strong>' +
       (dono ? '<div class="pr-row"><label class="pr-l" for="pr' + x._id + '">R$</label><input class="pr-in" id="pr' + x._id + '" type="number" step="0.01" min="0" data-preco="' + x._id + '" value="' + x.preco + '" aria-label="Preço de ' + esc(x.nome) + '"></div>' : '<div class="price">' + brl(x.preco) + '</div>') +
-      '<small>' + (x.esgotado ? 'Esgotado' : 'Disponível') + (x.destaque ? ' · Destaque' : '') + (x.opcoes.length ? ' · com opções' : '') + '</small></div><div class="row">' +
+      '<small>' + (x.esgotado ? 'Esgotado' : (x.semEstoque || []).length ? 'Fora do cardápio' : 'Disponível') + (x.destaque ? ' · Destaque' : '') + (x.sugerir ? ' · Peça também' : '') + (x.opcoes.length ? ' · com opções' : '') + '</small>' +
+      (dono && x.custo != null ? '<small class="lucro">Custo ' + brl(x.custo) + ' · lucro ' + brl(x.preco - x.custo) + ' (' + pct(x.preco ? (x.preco - x.custo) / x.preco * 100 : 0) + ')</small>' : '') +
+      ((x.semEstoque || []).length ? '<span class="badge b-crit" style="margin-top:4px">Sem estoque de ' + esc(x.semEstoque.join(', ')) + '</span>' : '') + '</div><div class="row">' +
       (dono ? '<button class="btn sm ghost" data-act="editar-prod" data-id="' + x._id + '">Editar</button>' : '') +
       '<button class="btn sm ghost" data-act="esgotar" data-id="' + x._id + '">' + (x.esgotado ? 'Disponível' : 'Esgotar') + '</button>' +
       (dono ? '<button class="btn sm ' + (S.confirmar === 'p' + x._id ? 'danger' : 'ghost') + '" data-act="remover-prod" data-id="' + x._id + '">' + (S.confirmar === 'p' + x._id ? 'Confirmar remoção' : 'Remover') + '</button>' : '') + '</div></div>').join(''); }).join('');
+  S.ficha = form ? ((p && p.ficha) || []).map(f => ({ insumo: f.insumo, qtd: f.qtd })) : null;
   $('#pane').innerHTML = topo + form + (dono ? '<p class="note">Altere o preço direto na lista. As mudanças valem na hora para os próximos pedidos.</p>' : '<p class="note">Marque como esgotado o que acabou. O cardápio dos clientes deixa de oferecer na hora.</p>') + lista;
+  desenharFicha();
 }
+/* ficha técnica no formulário do produto (redesenha só a lista, sem perder o que já foi digitado) */
+const UN = { un: 'un', kg: 'kg', g: 'g', l: 'litro', ml: 'ml' };
+const qtdTxt = (v, u) => (Math.round(v * 1000) / 1000).toString().replace('.', ',') + ' ' + (u === 'l' ? 'L' : u);
+function desenharFicha(){
+  const box = $('#ficha-l'); if (!box || !S.ficha) return;
+  if (!S.ficha.length) S.ficha.push({ insumo: '', qtd: '' });
+  box.innerHTML = S.ficha.map((f, i) => { const ins = S.insumos.find(x => x.id === f.insumo);
+    return '<div class="fi-row"><label class="sr" for="fi-i' + i + '">Insumo</label><select id="fi-i' + i + '" data-fi-ins="' + i + '"><option value="">Escolha o insumo…</option>' + S.insumos.map(x => '<option value="' + x.id + '"' + (x.id === f.insumo ? ' selected' : '') + '>' + esc(x.nome) + '</option>').join('') + '</select>' +
+      '<label class="sr" for="fi-q' + i + '">Quantidade</label><input id="fi-q' + i + '" data-fi-qtd="' + i + '" type="number" min="0" step="0.001" value="' + esc(f.qtd) + '" placeholder="Qtd."><span class="fi-un">' + (ins ? (UN[ins.unidade] || ins.unidade) + ' por unidade' : '') + '</span>' +
+      '<button type="button" class="mini danger" data-act="fi-tirar" data-i="' + i + '">Tirar</button></div>'; }).join('');
+  custoFicha();
+}
+function custoFicha(){
+  const el = $('#fi-custo'); if (!el) return;
+  const custo = S.ficha.reduce((a, f) => { const ins = S.insumos.find(x => x.id === f.insumo); return a + (ins ? (parseFloat(f.qtd) || 0) * ins.custo : 0); }, 0);
+  const preco = parseFloat(($('#p-preco') || {}).value) || 0, ok = S.ficha.some(f => f.insumo && parseFloat(f.qtd) > 0);
+  el.innerHTML = ok ? 'Custo do prato: <strong>' + brl(custo) + '</strong> · lucro por unidade: <strong>' + brl(preco - custo) + '</strong> (' + pct(preco ? (preco - custo) / preco * 100 : 0) + ' do preço)' : 'Escolha os insumos e quanto o prato usa de cada um.';
+}
+
+/* foto: envia do celular ou do computador (a foto é reduzida antes, para carregar rápido no cardápio) */
+function campoFoto(id, valor, rotulo){
+  return '<div class="foto-up"><div class="foto-prev" id="' + id + '-prev">' + (valor ? '<img src="' + esc(valor) + '" alt="">' : '<span>Sem foto</span>') + '</div><div style="flex:1;min-width:0">' +
+    '<label class="btn sm" for="' + id + '-arq">' + rotulo + '</label><input class="arq" type="file" id="' + id + '-arq" accept="image/jpeg,image/png,image/webp,image/*" data-foto="' + id + '">' +
+    '<label for="' + id + '" style="margin-top:8px">Ou cole o endereço de uma imagem</label><input id="' + id + '" value="' + esc(valor) + '" placeholder="https://…"></div></div>';
+}
+async function reduzirFoto(file, max){
+  let bmp;
+  try { bmp = await createImageBitmap(file); }
+  catch (e) { bmp = await new Promise((ok, erro) => { const fr = new FileReader(); fr.onload = () => { const i = new Image(); i.onload = () => ok(i); i.onerror = () => erro(new Error('Não deu para abrir essa imagem. Use JPG ou PNG.')); i.src = fr.result; }; fr.onerror = () => erro(new Error('Não deu para ler o arquivo.')); fr.readAsDataURL(file); }); }
+  const w = bmp.width || bmp.naturalWidth, h = bmp.height || bmp.naturalHeight, k = Math.min(1, max / Math.max(w, h));
+  const c = document.createElement('canvas'); c.width = Math.round(w * k); c.height = Math.round(h * k);
+  const g = c.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, c.width, c.height); g.drawImage(bmp, 0, 0, c.width, c.height);
+  return new Promise(ok => c.toBlob(ok, 'image/jpeg', 0.84));
+}
+async function enviarFoto(input){
+  const f = input.files && input.files[0]; if (!f) return;
+  const id = input.dataset.foto, lab = document.querySelector('label[for="' + input.id + '"]'), txt = lab.textContent;
+  lab.textContent = 'Enviando…'; lab.classList.add('disabled');
+  try {
+    if (!/^image\//.test(f.type) && !/\.(jpe?g|png|webp|heic)$/i.test(f.name)) throw new Error('Escolha uma foto (JPG, PNG ou WEBP).');
+    const blob = await reduzirFoto(f, id === 'c-capa' ? 1800 : 1400);
+    const r = await fetch('/api/painel/fotos', { method: 'POST', headers: { Authorization: 'Bearer ' + S.token, 'Content-Type': 'image/jpeg' }, body: blob });
+    const d = await r.json().catch(() => ({})); if (!r.ok) throw new Error(d.erro || 'Não foi possível enviar a foto.');
+    $('#' + id).value = d.url; $('#' + id + '-prev').innerHTML = '<img src="' + esc(d.url) + '" alt="">';
+    toast('Foto enviada. Agora é só salvar.');
+  } catch (e) { toast(e.message); }
+  lab.textContent = txt; lab.classList.remove('disabled'); input.value = '';
+}
+
 function escolhas(str, sep){ return String(str || '').split(sep).map(s => s.trim()).filter(Boolean).map(s => { const a = s.split('|'); return { nome: a[0].trim(), preco: Math.max(0, parseFloat(String(a[1] || '0').replace(',', '.')) || 0) }; }).filter(e => e.nome); }
 async function salvarProduto(e){
   e.preventDefault();
@@ -238,13 +330,59 @@ async function salvarProduto(e){
   const ad = escolhas($('#p-add').value, /\n/); if (ad.length) opcoes.push({ nome: 'Adicionais', tipo: 'varios', escolhas: ad });
   const atual = S.editId ? S.produtos.find(x => x._id === S.editId) : null;
   const corpo = { nome: $('#p-nome').value, preco: $('#p-preco').value, descricao: $('#p-desc').value, categoria: cat, fotoUrl: $('#p-foto').value,
-    selos: $$('#f-prod [data-selo]').filter(x => x.checked).map(x => x.dataset.selo), destaque: $('#p-dest').checked, esgotado: atual ? atual.esgotado : false, opcoes };
+    selos: $$('#f-prod [data-selo]').filter(x => x.checked).map(x => x.dataset.selo), destaque: $('#p-dest').checked, sugerir: $('#p-sug').checked, esgotado: atual ? atual.esgotado : false, opcoes,
+    fiscal: $('#p-ncm') ? { ncm: $('#p-ncm').value, cfop: $('#p-cfop').value, csosn: $('#p-csosn').value } : (atual ? atual.fiscal : {}) };
+  const ficha = S.ficha ? S.ficha.filter(f => f.insumo && parseFloat(f.qtd) > 0).map(f => ({ insumo: f.insumo, qtd: f.qtd })) : null;
   try {
-    if (S.editId) await chamar('PUT', '/api/painel/produtos/' + S.editId, corpo); else await chamar('POST', '/api/painel/produtos', corpo);
+    const d = S.editId ? await chamar('PUT', '/api/painel/produtos/' + S.editId, corpo) : await chamar('POST', '/api/painel/produtos', corpo);
+    if (ficha && S.insumos.length && (ficha.length || (atual && atual.ficha && atual.ficha.length))) await chamar('PUT', '/api/painel/produtos/' + d.produto.id + '/ficha', { itens: ficha });
     toast(S.editId ? 'Produto atualizado' : 'Produto adicionado ao cardápio');
     if (S.config && cat && !S.config.categorias.includes(cat)) S.config.categorias.push(cat);
     S.editId = null; S.formAberto = false; renderProdutos();
   } catch (err) { toast(err.message); }
+}
+
+/* ---------- estoque ---------- */
+const SIT = { ok: ['b-good', 'Ok'], baixo: ['b-warn', 'Acabando'], acabou: ['b-crit', 'Acabou'] };
+async function renderEstoque(){
+  if (!S.estoque) $('#pane').innerHTML = '<p class="note">Carregando…</p>';
+  try { S.estoque = await chamar('GET', '/api/painel/estoque'); S.insumos = S.estoque.insumos; } catch (e) { $('#pane').innerHTML = '<p class="erro">' + esc(e.message) + '</p>'; return; }
+  desenharEstoque();
+}
+function desenharEstoque(){
+  const E = S.estoque, dono = S.eu.papel === 'dono', ins = E.insumos;
+  const fora = E.produtos.filter(p => p.semEstoque.length), comFicha = E.produtos.filter(p => p.temFicha), semFicha = E.produtos.filter(p => !p.temFicha);
+  const n = k => ins.filter(i => i.situacao === k).length;
+  const mov = i => S.movPara !== i.id ? '' : '<tr class="mov-row"><td colspan="' + (dono ? 6 : 5) + '"><form id="f-mov" data-id="' + i.id + '" class="row" novalidate style="margin:0;align-items:flex-end">' +
+    '<div class="seg" role="group" aria-label="Tipo de movimento">' + [['entrada', 'Entrada (compra)'], ['perda', 'Perda'], ['ajuste', 'Contagem']].map(t => '<button type="button" data-act="mov-tipo" data-t="' + t[0] + '" aria-pressed="' + (S.movTipo === t[0]) + '">' + t[1] + '</button>').join('') + '</div>' +
+    '<div><label for="mv-q">' + (S.movTipo === 'ajuste' ? 'Quanto tem agora' : 'Quantidade') + ' (' + (UN[i.unidade] || i.unidade) + ')</label><input id="mv-q" type="number" min="0" step="0.001" style="width:140px"></div>' +
+    (dono && S.movTipo === 'entrada' ? '<div><label for="mv-c">Novo custo por ' + (UN[i.unidade] || i.unidade) + ' (opcional)</label><input id="mv-c" type="number" min="0" step="0.01" placeholder="' + i.custo + '" style="width:150px"></div>' : '') +
+    '<button class="btn sm" type="submit">Salvar</button><button class="btn sm ghost" type="button" data-act="mov-fechar">Cancelar</button></form></td></tr>';
+  const hist = i => S.histIns && S.histIns.id === i.id ? '<tr class="mov-row"><td colspan="' + (dono ? 6 : 5) + '">' + (S.histIns.l.length ? '<ul class="movs">' + S.histIns.l.map(m => '<li><span>' + quando(m.em) + '</span><span class="' + (m.delta < 0 ? 'neg' : 'pos') + '">' + (m.delta > 0 ? '+' : '') + qtdTxt(m.delta, i.unidade) + '</span><span>' + ({ venda: 'Venda' + (m.pedido ? ' · pedido #' + m.pedido : ''), devolucao: 'Devolvido' + (m.pedido ? ' · pedido #' + m.pedido + ' cancelado' : ''), entrada: 'Entrada', perda: 'Perda', ajuste: 'Contagem' }[m.motivo]) + (m.por && !/^pedido/.test(m.por) ? ' · ' + esc(m.por) : '') + '</span></li>').join('') + '</ul>' : '<p class="note">Nenhum movimento ainda.</p>') + '</td></tr>' : '';
+  const edit = i => S.editIns !== i.id ? '' : '<tr class="mov-row"><td colspan="6">' + formInsumo(i) + '</td></tr>';
+  $('#pane').innerHTML = '<div class="kpis"><div class="kpi"><span>Insumos</span><strong>' + ins.length + '</strong></div><div class="kpi"><span>Acabando</span><strong>' + n('baixo') + '</strong></div><div class="kpi"><span>Acabaram</span><strong>' + n('acabou') + '</strong></div><div class="kpi"><span>Pratos fora do cardápio</span><strong>' + fora.length + '</strong></div></div>' +
+    (fora.length ? '<div class="warnbox">Saíram do cardápio sozinhos por falta de insumo: ' + fora.map(p => '<strong>' + esc(p.nome) + '</strong> (' + esc(p.semEstoque.join(', ')) + ')').join(', ') + '. Voltam assim que você lançar a entrada.</div>' : '') +
+    '<div class="row between"><h3 style="margin:18px 0 8px">Insumos</h3>' + (dono && !S.novoIns ? '<button class="btn sm" data-act="ins-novo">+ Novo insumo</button>' : '') + '</div>' +
+    (S.novoIns ? '<div class="card">' + formInsumo(null) + '</div>' : '') +
+    (ins.length ? '<div class="card tbl" style="padding:0"><table><thead><tr><th>Insumo</th><th style="text-align:right">Estoque</th><th style="text-align:right">Mínimo</th>' + (dono ? '<th style="text-align:right">Custo</th>' : '') + '<th>Situação</th><th></th></tr></thead><tbody>' +
+      ins.map(i => '<tr><td><strong>' + esc(i.nome) + '</strong>' + (i.usadoEm ? '<br><small class="note">em ' + i.usadoEm + (i.usadoEm > 1 ? ' pratos' : ' prato') + '</small>' : '') + '</td><td style="text-align:right">' + qtdTxt(i.estoque, i.unidade) + '</td><td style="text-align:right">' + qtdTxt(i.minimo, i.unidade) + '</td>' +
+        (dono ? '<td style="text-align:right">' + brl(i.custo) + ' / ' + (i.unidade === 'l' ? 'L' : i.unidade) + '</td>' : '') + '<td><span class="badge ' + SIT[i.situacao][0] + '">' + SIT[i.situacao][1] + '</span></td>' +
+        '<td><div class="row" style="margin:0;gap:2px 10px;justify-content:flex-end"><button class="mini" data-act="mov-abrir" data-id="' + i.id + '">Lançar</button><button class="mini" data-act="ins-hist" data-id="' + i.id + '">Histórico</button>' +
+        (dono ? '<button class="mini" data-act="ins-editar" data-id="' + i.id + '">Editar</button><button class="mini danger" data-act="ins-remover" data-id="' + i.id + '">' + (S.confirmar === 'i' + i.id ? 'Confirmar remoção' : 'Remover') + '</button>' : '') + '</div></td></tr>' + mov(i) + hist(i) + edit(i)).join('') + '</tbody></table></div>'
+      : '<p class="note">Nenhum insumo ainda. ' + (dono ? 'Cadastre o que você compra (ex.: mussarela em kg, pão em unidades) e monte a ficha técnica de cada prato na aba Produtos.' : 'O dono cadastra os insumos.') + '</p>') +
+    '<p class="note">A cada pedido, o estoque baixa sozinho pela ficha técnica de cada prato, e volta se o pedido for cancelado. Quando um insumo acaba, os pratos que usam ele saem do cardápio até a próxima entrada.</p>' +
+    (dono ? '<h3>Custo e lucro por prato</h3>' + (comFicha.length ? '<div class="card tbl" style="padding:0"><table><thead><tr><th>Prato</th><th style="text-align:right">Preço</th><th style="text-align:right">Custo</th><th style="text-align:right">Lucro</th><th style="text-align:right">Margem</th><th></th></tr></thead><tbody>' +
+        comFicha.slice().sort((a, b) => a.margem - b.margem).map(p => '<tr><td>' + esc(p.nome) + '<br><small class="note">' + p.ficha.map(f => qtdTxt(f.qtd, f.unidade) + ' ' + esc(f.nome)).join(' · ') + '</small></td><td style="text-align:right">' + brl(p.preco) + '</td><td style="text-align:right">' + brl(p.custo) + '</td><td style="text-align:right"><strong>' + brl(p.lucro) + '</strong></td><td style="text-align:right"><span class="badge ' + (p.margem < 50 ? 'b-warn' : 'b-good') + '">' + pct(p.margem) + '</span></td><td><button class="mini" data-act="ficha-editar" data-id="' + p.id + '">Ficha</button></td></tr>').join('') + '</tbody></table></div>' : '<p class="note">Nenhum prato com ficha técnica ainda.</p>') +
+      (semFicha.length ? '<p class="note">Sem ficha técnica (não controlam estoque nem mostram lucro): ' + semFicha.map(p => '<button class="mini" data-act="ficha-editar" data-id="' + p.id + '">' + esc(p.nome) + '</button>').join(' ') + '</p>' : '') : '');
+}
+function formInsumo(i){
+  const v = (k, d) => esc(i ? i[k] : d);
+  return '<form class="f-ins" data-id="' + (i ? i.id : '') + '" novalidate><div class="grid3"><div><label for="in-nome">Nome</label><input id="in-nome" value="' + v('nome', '') + '" placeholder="Ex.: Mussarela"></div>' +
+    '<div><label for="in-un">Unidade</label><select id="in-un">' + Object.keys(UN).map(u => '<option value="' + u + '"' + ((i ? i.unidade : 'kg') === u ? ' selected' : '') + '>' + ({ un: 'Unidade', kg: 'Quilo (kg)', g: 'Grama (g)', l: 'Litro', ml: 'Mililitro (ml)' }[u]) + '</option>').join('') + '</select></div>' +
+    '<div><label for="in-custo">Custo por unidade (R$)</label><input id="in-custo" type="number" min="0" step="0.01" value="' + v('custo', '') + '" placeholder="Ex.: 38,00 o kg"></div>' +
+    (i ? '' : '<div><label for="in-est">Quanto tem agora</label><input id="in-est" type="number" min="0" step="0.001" placeholder="Ex.: 12"></div>') +
+    '<div><label for="in-min">Avisar quando ficar abaixo de</label><input id="in-min" type="number" min="0" step="0.001" value="' + v('minimo', '') + '" placeholder="Ex.: 2"></div></div>' +
+    '<div class="row"><button class="btn sm" type="submit">' + (i ? 'Salvar insumo' : 'Cadastrar insumo') + '</button><button class="btn sm ghost" type="button" data-act="ins-cancelar">Cancelar</button></div></form>';
 }
 
 /* ---------- mesas e QR ---------- */
@@ -256,9 +394,20 @@ function qrSvg(texto){
 }
 async function renderMesas(){
   $('#pane').innerHTML = '<p class="note">Carregando…</p>';
-  try { S.mesas = (await chamar('GET', '/api/painel/mesas')).mesas; } catch (e) { $('#pane').innerHTML = '<p class="erro">' + esc(e.message) + '</p>'; return; }
+  const rc = S.rest.recursos || {};
+  try {
+    S.mesas = rc.mesa !== false ? (await chamar('GET', '/api/painel/mesas')).mesas : [];
+    if (rc.totem !== false && !S.totem) S.totem = (await chamar('GET', '/api/painel/totem')).token;
+  } catch (e) { $('#pane').innerHTML = '<p class="erro">' + esc(e.message) + '</p>'; return; }
   const base = location.origin + '/r/' + S.rest.slug;
-  $('#pane').innerHTML = '<h3>Link do delivery</h3><div class="card dlink"><div class="qrc">' + qrSvg(base) + '<strong>Peça pelo site</strong><span>' + esc(S.rest.nome) + '</span></div><div style="flex:1;min-width:0"><p style="margin:0 0 6px">Coloque este link na bio do Instagram, no WhatsApp Business, no Google e nos panfletos.</p><div class="code" id="dl-link">' + esc(base) + '</div><div class="row"><button class="btn sm" data-act="copiar" data-v="' + esc(base) + '">Copiar link</button></div></div></div>' +
+  const totemUrl = S.totem ? base + '/totem?t=' + encodeURIComponent(S.totem) + (S.totemImp ? '&imprimir=1' : '') : '';
+  const blocoTotem = rc.totem === false ? '' : '<h3>Modo totem (autoatendimento no balcão)</h3><div class="card dlink"><div class="qrc">' + qrSvg(totemUrl) + '<strong>Totem</strong><span>aponte a câmera do tablet</span></div><div style="flex:1;min-width:0">' +
+    '<p style="margin:0 0 6px">Abra este link no tablet ou totem do balcão. O cliente escolhe os pratos, diz o nome e paga no caixa ou por Pix. O pedido chega aqui como <strong>Totem</strong>, com o número da senha.</p><div class="code">' + esc(totemUrl) + '</div>' +
+    '<label class="ck" for="tt-imp" style="font-weight:600"><input type="checkbox" id="tt-imp"' + (S.totemImp ? ' checked' : '') + '> Imprimir a senha do cliente numa impressora ligada ao totem</label>' +
+    '<div class="row"><button class="btn sm" data-act="copiar" data-v="' + esc(totemUrl) + '">Copiar link</button><a class="btn sm ghost" href="' + esc(totemUrl) + '" target="_blank" rel="noopener">Abrir o totem</a><button class="btn sm ' + (S.confirmar === 'totem' ? 'danger' : 'ghost') + '" data-act="totem-codigo">' + (S.confirmar === 'totem' ? 'Confirmar: o link antigo para de funcionar' : 'Gerar novo código') + '</button></div>' +
+    '<p class="note">No tablet: abra o link no Chrome, toque em ⋮ → “Adicionar à tela inicial” e abra por esse ícone, em tela cheia. O totem volta sozinho para o início depois de cada pedido ou quando fica parado. Para um tablet em cada mesa, use o QR Code da própria mesa.</p></div></div>';
+  if (rc.mesa === false){ $('#pane').innerHTML = blocoTotem; return; }
+  $('#pane').innerHTML = blocoTotem + '<h3>Link do delivery</h3><div class="card dlink"><div class="qrc">' + qrSvg(base) + '<strong>Peça pelo site</strong><span>' + esc(S.rest.nome) + '</span></div><div style="flex:1;min-width:0"><p style="margin:0 0 6px">Coloque este link na bio do Instagram, no WhatsApp Business, no Google e nos panfletos.</p><div class="code" id="dl-link">' + esc(base) + '</div><div class="row"><button class="btn sm" data-act="copiar" data-v="' + esc(base) + '">Copiar link</button></div></div></div>' +
     '<h3>QR Codes das mesas</h3><div class="card"><div class="row" style="margin:0;align-items:flex-end"><div><label for="m-qtd" style="margin-top:0">Quantidade de mesas</label><input id="m-qtd" type="number" min="1" max="200" value="' + (S.mesas.length || 10) + '" style="width:120px"></div><button class="btn sm" data-act="salvar-mesas">Atualizar mesas</button></div>' +
     '<p class="note">Cada QR leva um código secreto da mesa: só quem está no restaurante consegue pedir por ela. Se um QR for copiado ou fotografado, gere um novo código e imprima de novo. Para imprimir, use Ctrl+P no computador.</p></div>' +
     '<div class="qrs">' + S.mesas.map(m => { const url = base + '/mesa/' + m.numero + '?t=' + encodeURIComponent(m.token); return '<div class="qrc">' + qrSvg(url) + '<strong>Mesa ' + pad(m.numero) + '</strong><span>' + esc(S.rest.nome) + '</span><span>Aponte a câmera para ver o cardápio e pedir</span>' +
@@ -280,11 +429,12 @@ async function renderEquipe(){
 /* ---------- configurações ---------- */
 async function renderConfig(){
   $('#pane').innerHTML = '<p class="note">Carregando…</p>';
-  try { S.config = (await chamar('GET', '/api/painel/restaurante')).restaurante; } catch (e) { $('#pane').innerHTML = '<p class="erro">' + esc(e.message) + '</p>'; return; }
+  try { const r = await chamar('GET', '/api/painel/restaurante'); S.config = r.restaurante; S.fiscalProvedor = r.fiscalProvedor; S.cfgBusca = r.buscaEndereco; } catch (e) { $('#pane').innerHTML = '<p class="erro">' + esc(e.message) + '</p>'; return; }
   const c = S.config, d = c.delivery;
   const inp = (id, lab, v, extra) => '<div><label for="' + id + '">' + lab + '</label><input id="' + id + '" value="' + esc(v) + '"' + (extra || '') + '></div>';
   $('#pane').innerHTML = '<form id="f-config" novalidate><h3>Identidade</h3><div class="card"><div class="grid2">' + inp('c-nome', 'Nome do restaurante', c.nome) + inp('c-frase', 'Frase curta', c.frase) +
-    '<div><label for="c-cor">Cor principal</label><input id="c-cor" type="color" value="' + esc(c.cor) + '"></div>' + inp('c-logo', 'Endereço do logo (opcional)', c.logoUrl, ' placeholder="https://…"') + inp('c-capa', 'Foto de capa do site (endereço)', c.capaUrl, ' placeholder="https://…"') + '</div>' +
+    '<div><label for="c-cor">Cor principal</label><input id="c-cor" type="color" value="' + esc(c.cor) + '"></div></div>' +
+    '<div class="grid2"><div><label>Logo</label>' + campoFoto('c-logo', c.logoUrl, 'Enviar logo') + '</div><div><label>Foto de capa do site</label>' + campoFoto('c-capa', c.capaUrl, 'Enviar foto de capa') + '</div></div>' +
     '<label for="c-sobre">Sobre o restaurante (aparece no site)</label><textarea id="c-sobre" rows="3" maxlength="400">' + esc(c.sobre || '') + '</textarea>' +
     '<p class="note">Endereço do cardápio: ' + esc(location.origin + '/r/' + c.slug) + '</p></div>' +
     '<h3>Funcionamento</h3><div class="card"><div class="grid2">' + inp('c-abre', 'Abre às', c.abre, ' type="time"') + inp('c-fecha', 'Fecha às', c.fecha, ' type="time"') + inp('c-serv', 'Taxa de serviço na mesa (%)', c.taxaServico, ' type="number" min="0" max="30"') + inp('c-whats', 'WhatsApp do restaurante', c.whatsapp, ' inputmode="tel"') + inp('c-pix', 'Chave Pix (aparece para o cliente pagar)', c.chavePix) + '</div>' +
@@ -292,16 +442,64 @@ async function renderConfig(){
     '<label for="c-cats">Ordem das categorias no cardápio (uma por linha)</label><textarea id="c-cats" rows="4">' + esc((c.categorias || []).join('\n')) + '</textarea></div>' +
     '<h3>Delivery</h3><div class="card">' + (c.recursos && c.recursos.delivery === false ? '<p class="warnbox" style="margin-top:0">O delivery não está incluído no plano deste restaurante. Fale com o suporte para ativar.</p>' : '') + '<div class="checks"><label for="c-dat"><input type="checkbox" id="c-dat"' + (d.ativo ? ' checked' : '') + (c.recursos && c.recursos.delivery === false ? ' disabled' : '') + '> Delivery ativo</label></div><div class="grid2">' + inp('c-tempo', 'Tempo de entrega', d.tempo) + inp('c-tret', 'Tempo para retirada', d.tempoRetirada) +
     inp('c-min', 'Pedido mínimo para entrega (R$)', d.pedidoMinimo, ' type="number" min="0"') + inp('c-gratis', 'Entrega grátis acima de (R$, 0 = nunca)', d.gratisAcimaDe, ' type="number" min="0"') + '</div>' +
-    '<label for="c-bairros">Bairros atendidos e taxa (um por linha: Bairro | taxa)</label><textarea id="c-bairros" rows="5">' + esc(d.bairros.map(b => b.nome + ' | ' + b.taxa).join('\n')) + '</textarea></div>' +
+    '<label>Como cobrar a entrega</label><div class="seg" role="group" aria-label="Como cobrar a entrega"><button type="button" data-act="modo-ent" data-m="bairro" aria-pressed="' + (d.modo !== 'distancia') + '">Por bairro</button><button type="button" data-act="modo-ent" data-m="distancia" aria-pressed="' + (d.modo === 'distancia') + '">Por distância (mapa)</button></div>' +
+    '<div id="ent-bairro"' + (d.modo === 'distancia' ? ' hidden' : '') + '><label for="c-bairros">Bairros atendidos e taxa (um por linha: Bairro | taxa)</label><textarea id="c-bairros" rows="5">' + esc(d.bairros.map(b => b.nome + ' | ' + b.taxa).join('\n')) + '</textarea></div>' +
+    '<div id="ent-dist"' + (d.modo === 'distancia' ? '' : ' hidden') + '><p class="note">O cliente marca a casa no mapa e a taxa sai pela distância em linha reta até o restaurante. Pelas ruas costuma ser 20% a 40% mais longe: considere isso nas faixas.</p>' +
+      '<label for="c-local-q">Onde fica o restaurante</label><div class="row" style="margin:0"><input id="c-local-q" style="flex:1;min-width:200px" value="' + esc(d.local.endereco || '') + '" placeholder="Rua, número e cidade">' + (S.cfgBusca !== false ? '<button type="button" class="btn sm ghost" data-act="local-buscar">Buscar no mapa</button>' : '') + '</div>' +
+      '<div id="local-res"></div><div class="mapa-cfg" id="mapa-rest" aria-label="Mapa: toque ou arraste o pino até o restaurante"></div>' +
+      '<input type="hidden" id="c-lat" value="' + (d.local.lat == null ? '' : d.local.lat) + '"><input type="hidden" id="c-lng" value="' + (d.local.lng == null ? '' : d.local.lng) + '">' +
+      '<p class="note" id="local-txt">' + (d.local.lat == null ? 'Toque no mapa onde fica o restaurante.' : 'Local marcado. Arraste o pino para ajustar.') + '</p>' +
+      '<label for="c-faixas">Faixas de distância (uma por linha: até quantos km | taxa)</label><textarea id="c-faixas" rows="4" placeholder="3 | 6&#10;5 | 8&#10;8 | 11">' + esc((d.faixas || []).map(f => String(f.ate).replace('.', ',') + ' | ' + f.taxa).join('\n')) + '</textarea>' +
+      '<p class="note">Acima da última faixa, o site avisa que fica fora da área de entrega.</p></div></div>' +
+    '<h3>Pedido agendado</h3><div class="card"><div class="checks"><label for="c-ag"><input type="checkbox" id="c-ag"' + (c.agendamento.ativo ? ' checked' : '') + '> Deixar o cliente agendar o horário (entrega e retirada)</label></div>' +
+      '<div class="grid3">' + inp('c-ag-ant', 'Antecedência mínima (minutos)', c.agendamento.antecedencia, ' type="number" min="15" max="1440"') + inp('c-ag-dias', 'Até quantos dias à frente', c.agendamento.dias, ' type="number" min="0" max="7"') + inp('c-ag-prep', 'Mostrar na cozinha quantos minutos antes', c.agendamento.preparo, ' type="number" min="10" max="240"') + '</div>' +
+      '<p class="note">Os horários são de 30 em 30 minutos, dentro do horário de funcionamento. Com o restaurante fechado, o cliente ainda consegue agendar para quando abrir.</p></div>' +
+    (temNfce() ? blocoFiscal(c) : '') +
     '<div class="row"><button class="btn" type="submit">Salvar configurações</button></div></form>';
+  montarMapaConfig();
+}
+function blocoFiscal(c){
+  const f = c.fiscal || {}, demo = S.fiscalProvedor === 'demo';
+  const inp = (id, lab, v, extra) => '<div><label for="' + id + '">' + lab + '</label><input id="' + id + '" value="' + esc(v == null ? '' : v) + '"' + (extra || '') + '></div>';
+  return '<h3>Nota fiscal (NFC-e)</h3><div class="card">' +
+    (demo ? '<p class="warnbox" style="margin-top:0">Modo de demonstração: as notas são simuladas e saem marcadas como “sem valor fiscal”. Para emitir de verdade, o restaurante precisa de certificado digital A1, inscrição estadual e CSC, cadastrados num emissor (este sistema já está pronto para a Focus NFe).</p>'
+      : !S.fiscalProvedor ? '<p class="warnbox" style="margin-top:0">A emissão de notas está desligada no servidor.</p>' : '<p class="note" style="margin-top:0">Emissor: Focus NFe. O certificado digital e o CSC ficam cadastrados no painel da Focus; aqui vai só o token da empresa.</p>') +
+    '<div class="grid3">' + inp('f-cnpj', 'CNPJ', f.cnpj, ' inputmode="numeric" placeholder="00.000.000/0000-00"') + inp('f-ie', 'Inscrição estadual', f.ie) + inp('f-razao', 'Razão social', f.razao) +
+    '<div><label for="f-regime">Regime</label><select id="f-regime"><option value="1"' + (f.regime !== '3' ? ' selected' : '') + '>Simples Nacional</option><option value="3"' + (f.regime === '3' ? ' selected' : '') + '>Regime normal</option></select></div>' +
+    '<div><label for="f-amb">Ambiente</label><select id="f-amb"><option value="homologacao"' + (f.ambiente !== 'producao' ? ' selected' : '') + '>Homologação (testes)</option><option value="producao"' + (f.ambiente === 'producao' ? ' selected' : '') + '>Produção (vale de verdade)</option></select></div>' +
+    '<div><label for="f-token">Token do emissor</label><input id="f-token" type="password" autocomplete="off" placeholder="' + (f.tokenConfigurado ? '•••••• já configurado' : 'Cole o token da empresa') + '"></div>' +
+    inp('f-ncm', 'NCM padrão', f.ncm || '21069090', ' inputmode="numeric"') + inp('f-cfop', 'CFOP padrão', f.cfop || '5102', ' inputmode="numeric"') + inp('f-csosn', 'CSOSN / CST padrão', f.csosn || '102', ' inputmode="numeric"') + '</div>' +
+    '<div class="checks"><label for="f-auto"><input type="checkbox" id="f-auto"' + (f.auto ? ' checked' : '') + '> Emitir sozinho quando o pedido for finalizado (se a forma de pagamento for conhecida)</label>' + (f.tokenConfigurado ? '<label for="f-tok-apagar"><input type="checkbox" id="f-tok-apagar"> Apagar o token salvo</label>' : '') + '</div>' +
+    '<p class="note">A nota leva só os produtos: taxa de serviço e taxa de entrega ficam de fora. Confira NCM, CFOP e CSOSN com o contador do restaurante.</p></div>';
+}
+function montarMapaConfig(){
+  const el = $('#mapa-rest'); if (!el || $('#ent-dist').hidden) return;
+  const lat = parseFloat($('#c-lat').value), lng = parseFloat($('#c-lng').value), tem = !isNaN(lat) && !isNaN(lng);
+  Mapa.criar(el, { ponto: tem ? { lat, lng } : null, centro: tem ? { lat, lng } : null, zoom: tem ? 16 : 4, aoMover: (a, b) => { $('#c-lat').value = a; $('#c-lng').value = b; $('#local-txt').textContent = 'Local marcado. Arraste o pino para ajustar.'; } })
+    .catch(() => { el.innerHTML = '<p class="note" style="padding:12px">Não foi possível carregar o mapa.</p>'; });
+}
+async function buscarLocal(){
+  const q = $('#c-local-q').value.trim(); if (q.length < 4){ toast('Digite o endereço do restaurante.'); return; }
+  try { const l = (await api('GET', '/api/r/' + encodeURIComponent(S.rest.slug) + '/endereco?q=' + encodeURIComponent(q))).resultados;
+    $('#local-res').innerHTML = l.length ? '<div class="end-res">' + l.map((x, i) => '<button type="button" data-act="local-esc" data-lat="' + x.lat + '" data-lng="' + x.lng + '">' + esc(x.texto) + '</button>').join('') + '</div>' : '<p class="note">Nada encontrado. Marque direto no mapa.</p>';
+  } catch (e) { toast(e.message); }
 }
 async function salvarConfig(e){
   e.preventDefault();
   const v = id => $('#' + id).value;
   const corpo = { capaUrl: v('c-capa'), sobre: v('c-sobre'), nome: v('c-nome'), frase: v('c-frase'), cor: v('c-cor'), logoUrl: v('c-logo'), abre: v('c-abre'), fecha: v('c-fecha'), taxaServico: v('c-serv'), whatsapp: v('c-whats'), chavePix: v('c-pix'),
     aceitarForaDoHorario: $('#c-fora').checked, categorias: v('c-cats').split('\n').map(s => s.trim()).filter(Boolean),
-    delivery: { ativo: $('#c-dat').checked, tempo: v('c-tempo'), tempoRetirada: v('c-tret'), pedidoMinimo: v('c-min'), gratisAcimaDe: v('c-gratis'), bairros: escolhas(v('c-bairros'), /\n/).map(x => ({ nome: x.nome, taxa: x.preco })) } };
-  try { S.config = (await chamar('PUT', '/api/painel/restaurante', corpo)).restaurante; S.rest.nome = S.config.nome; S.rest.cor = S.config.cor; S.rest.logoUrl = S.config.logoUrl; aplicarCor(S.config.cor); renderHead(); toast('Configurações salvas'); }
+    delivery: { ativo: $('#c-dat').checked, tempo: v('c-tempo'), tempoRetirada: v('c-tret'), pedidoMinimo: v('c-min'), gratisAcimaDe: v('c-gratis'), bairros: escolhas(v('c-bairros'), /\n/).map(x => ({ nome: x.nome, taxa: x.preco })),
+      modo: $('#ent-dist').hidden ? 'bairro' : 'distancia', local: { lat: v('c-lat'), lng: v('c-lng'), endereco: v('c-local-q') },
+      faixas: v('c-faixas').split('\n').map(l => l.split('|')).filter(x => x.length > 1).map(x => ({ ate: x[0].trim().replace(',', '.'), taxa: x[1].trim().replace(',', '.') })) },
+    agendamento: { ativo: $('#c-ag').checked, antecedencia: v('c-ag-ant'), dias: v('c-ag-dias'), preparo: v('c-ag-prep') } };
+  if ($('#f-cnpj')){
+    corpo.fiscal = { cnpj: v('f-cnpj'), ie: v('f-ie'), razao: v('f-razao'), regime: v('f-regime'), ambiente: v('f-amb'), auto: $('#f-auto').checked, ncm: v('f-ncm'), cfop: v('f-cfop'), csosn: v('f-csosn') };
+    if (v('f-token').trim()) corpo.fiscalToken = v('f-token').trim();
+    if ($('#f-tok-apagar') && $('#f-tok-apagar').checked) corpo.fiscalTokenApagar = true;
+  }
+  try { S.config = (await chamar('PUT', '/api/painel/restaurante', corpo)).restaurante; S.rest.agendamento = { ativo: S.config.agendamento.ativo, preparo: S.config.agendamento.preparo };
+    if ($('#f-token')) { $('#f-token').value = ''; $('#f-token').placeholder = S.config.fiscal.tokenConfigurado ? '•••••• já configurado' : 'Cole o token da empresa'; } S.rest.nome = S.config.nome; S.rest.cor = S.config.cor; S.rest.logoUrl = S.config.logoUrl; aplicarCor(S.config.cor); renderHead(); toast('Configurações salvas'); }
   catch (err) { toast(err.message); }
 }
 
@@ -376,6 +574,9 @@ async function renderHist(){
     fin('rep', 'Repasse da taxa de serviço (%)', '5') + fin('emb', 'Embalagem por pedido de entrega (R$)', '0.5') + fin('entreg', 'Pagamento por entrega (R$)', '0.5') + '</div><p class="note">O resultado é uma estimativa com base nestas premissas, que ficam salvas para o restaurante. Pedidos cancelados não entram nas contas.</p></details>' +
     '<h3>Faturamento por ' + (d.granularidade === 'hora' ? 'hora' : 'dia') + '</h3><div class="card">' + grafico(d) + '<p class="note">' + npix + ' de ' + n + ' pedidos pagos por Pix no período.</p></div>' +
     '<h3>Pratos mais vendidos</h3><div class="card">' + (d.top.length ? '<div class="hbars">' + d.top.map(r => '<div class="hb" tabindex="0" data-tip="' + esc(r.nome) + ': ' + r.q + ' vendidos · ' + brl(r.v) + '"><span class="hb-l">' + esc(r.nome) + '</span><span class="hb-track"><span class="hb-bar" style="width:' + (r.q / tmax * 100) + '%"></span></span><span class="hb-v">' + r.q + '</span></div>').join('') + '</div>' : '<p class="note">Sem vendas no período.</p>') + '</div>' +
+    '<h3>Lucro por prato</h3><div class="card">' + (d.lucro.length ? '<div class="tbl"><table><thead><tr><th>Prato</th><th style="text-align:right">Vendidos</th><th style="text-align:right">Receita</th><th style="text-align:right">Custo</th><th style="text-align:right">Lucro</th><th style="text-align:right">Margem</th></tr></thead><tbody>' +
+      d.lucro.map(x => '<tr><td>' + esc(x.nome) + '</td><td style="text-align:right">' + x.q + '</td><td style="text-align:right">' + brl(x.receita) + '</td><td style="text-align:right">' + brl(x.custo) + '</td><td style="text-align:right"><strong>' + brl(x.lucro) + '</strong></td><td style="text-align:right">' + pct(x.margem) + '</td></tr>').join('') + '</tbody></table></div>' : '<p class="note">Sem vendas de pratos com ficha técnica no período.</p>') +
+      '<p class="note">Custo pela ficha técnica na hora de cada venda (aba Estoque).' + (d.semFicha ? ' ' + d.semFicha + (d.semFicha > 1 ? ' pratos vendidos no período não têm' : ' prato vendido no período não tem') + ' ficha técnica e fica' + (d.semFicha > 1 ? 'm' : '') + ' de fora.' : '') + '</p></div>' +
     '<h3>Histórico de pedidos</h3><div class="kbar"><div class="chips" id="h-chips"></div><input id="h-q" type="search" placeholder="Buscar nº, cliente, bairro ou mesa" aria-label="Buscar no histórico" value="' + esc(S.hq) + '" style="max-width:300px"></div><div id="h-list"><p class="note">Carregando…</p></div>';
   renderBal(); carregarHist();
 }
@@ -383,12 +584,56 @@ async function carregarHist(){
   let d; try { d = await chamar('GET', '/api/painel/historico?periodo=' + S.hp + '&canal=' + S.hc + '&limite=' + S.hn + '&q=' + encodeURIComponent(S.hq)); } catch (e) { $('#h-list').innerHTML = '<p class="erro">' + esc(e.message) + '</p>'; return; }
   if (!$('#h-list')) return;
   $('#h-chips').innerHTML = [['todos', 'Todos'], ['rest', 'Restaurante'], ['delivery', 'Delivery']].map(o => '<button class="chip" data-act="hc" data-c="' + o[0] + '" aria-pressed="' + (S.hc === o[0]) + '">' + o[1] + ' · ' + d.contagem[o[0]] + '</button>').join('');
-  $('#h-list').innerHTML = '<div class="card tbl" style="padding:0"><table><thead><tr><th>Pedido</th><th>Data</th><th>Canal</th><th>Cliente</th><th>Itens</th><th style="text-align:right">Total</th><th>Pagamento</th><th>Status</th></tr></thead><tbody>' +
-    (d.pedidos.map(p => '<tr><td>#' + p.numero + '</td><td>' + quando(p.createdAt) + '</td><td>' + (p.tipo === 'delivery' ? '<i class="lg s2"></i>Delivery' : '<i class="lg s1"></i>' + (p.tipo === 'mesa' ? 'Mesa ' + pad(p.mesa) : 'Retirada')) + '</td><td>' + esc(p.cliente.nome) + (p.entrega ? ' <small class="note">· ' + esc(p.entrega.bairro) + '</small>' : '') + '</td><td>' + p.itens + '</td><td style="text-align:right">' + brl(p.total) + '</td><td>' + esc(pagTxt(p)) + (p.pagamento.pago ? ' · pago' : '') + '</td><td>' + C.STATUS[p.status] + '</td></tr>').join('') || '<tr><td colspan="8" class="note">Nenhum pedido encontrado.</td></tr>') +
+  S.histLista = d.pedidos; const nf = temNfce();
+  const celNota = p => { const n = p.nota; if (n && n.status === 'autorizada') return '<a class="mini" href="' + esc(n.urlDanfe || '#') + '" target="_blank" rel="noopener">nº ' + esc(n.numero || '') + '</a>' + (S.eu.papel === 'dono' ? ' <button class="mini danger" data-act="nota-cancelar" data-id="' + n.id + '">Cancelar</button>' : '');
+    if (n && n.status === 'cancelada') return '<span class="note">cancelada</span>' + (p.status !== 'cancelado' ? ' <button class="mini" data-act="nfce" data-id="' + p.id + '">Emitir de novo</button>' : '');
+    if (n && n.status === 'processando') return '<button class="mini" data-act="nota-atualizar" data-id="' + n.id + '">processando…</button>';
+    return p.status === 'cancelado' ? '' : '<button class="mini" data-act="nfce" data-id="' + p.id + '">' + (n && n.status === 'erro' ? 'Erro · tentar' : 'Emitir') + '</button>'; };
+  $('#h-list').innerHTML = '<div class="card tbl" style="padding:0"><table><thead><tr><th>Pedido</th><th>Data</th><th>Canal</th><th>Cliente</th><th>Itens</th><th style="text-align:right">Total</th><th>Pagamento</th><th>Status</th>' + (nf ? '<th>NFC-e</th>' : '') + '</tr></thead><tbody>' +
+    (d.pedidos.map(p => '<tr><td>#' + p.numero + '</td><td>' + quando(p.createdAt) + '</td><td>' + (p.tipo === 'delivery' ? '<i class="lg s2"></i>Delivery' : '<i class="lg s1"></i>' + (p.tipo === 'mesa' ? 'Mesa ' + pad(p.mesa) : 'Retirada')) + '</td><td>' + esc(p.cliente.nome) + (p.entrega ? ' <small class="note">· ' + esc(p.entrega.bairro) + '</small>' : '') + '</td><td>' + p.itens + '</td><td style="text-align:right">' + brl(p.total) + '</td><td>' + esc(pagTxt(p)) + (p.pagamento.pago ? ' · pago' : '') + '</td><td>' + C.STATUS[p.status] + '</td>' + (nf ? '<td>' + celNota(p) + '</td>' : '') + '</tr>').join('') || '<tr><td colspan="9" class="note">Nenhum pedido encontrado.</td></tr>') +
     '</tbody></table></div><div class="row between"><span class="note" style="margin:0">Mostrando ' + d.pedidos.length + ' de ' + d.total + ' pedidos · ' + brl(d.valor) + '</span>' + (d.total > d.pedidos.length ? '<button class="btn sm ghost" data-act="hmore">Mostrar mais</button>' : '') + '</div>';
 }
 let salvarFinT;
 function salvarPremissas(){ clearTimeout(salvarFinT); salvarFinT = setTimeout(async () => { try { S.rel.premissas = (await chamar('PUT', '/api/painel/financeiro', S.rel.premissas)).premissas; toast('Premissas salvas'); } catch (e) { toast(e.message); } }, 700); }
+
+/* ---------- NFC-e: emitir e cancelar ---------- */
+const FORMAS = [['01', 'Dinheiro'], ['03', 'Cartão de crédito'], ['04', 'Cartão de débito'], ['17', 'Pix'], ['99', 'Outros']];
+const FORMA_PAD = { dinheiro: '01', cartao: '03', pix: '17', online: '03' };
+function fecharModal(){ $('#modal').innerHTML = ''; }
+function abrirNfce(id){
+  const p = S.pedidos.find(x => x._id === id) || (S.histLista || []).find(x => x.id === id); if (!p) return;
+  const pad0 = FORMA_PAD[p.pagamento.metodo] || '';
+  $('#modal').innerHTML = '<div class="veu" data-act="modal-fechar"><form class="caixa" id="f-nfce" data-id="' + id + '" role="dialog" aria-modal="true" aria-labelledby="nf-t" novalidate><h3 id="nf-t" style="margin-top:0">Emitir NFC-e · pedido #' + p.numero + '</h3>' +
+    '<p class="note" style="margin-top:0">Vão na nota os produtos do pedido. Taxa de serviço e de entrega ficam de fora.</p>' +
+    '<label for="nf-pag">Como o cliente pagou</label><select id="nf-pag">' + (pad0 ? '' : '<option value="">Escolha…</option>') + FORMAS.map(f => '<option value="' + f[0] + '"' + (f[0] === pad0 ? ' selected' : '') + '>' + f[1] + '</option>').join('') + '</select>' +
+    '<label for="nf-cpf">CPF na nota (opcional)</label><input id="nf-cpf" inputmode="numeric" maxlength="14" placeholder="000.000.000-00" autocomplete="off">' +
+    '<div id="nf-res"></div><div class="row"><button class="btn" type="submit" id="nf-btn">Emitir nota</button><button class="btn ghost" type="button" data-act="modal-fechar">Fechar</button></div></form></div>';
+  $('#nf-pag').focus();
+}
+async function emitirNfce(form){
+  const id = form.dataset.id, btn = $('#nf-btn'), res = $('#nf-res');
+  if (!$('#nf-pag').value){ toast('Escolha como o cliente pagou.'); return; }
+  btn.disabled = true; btn.textContent = 'Emitindo…'; res.innerHTML = '';
+  try {
+    const n = (await chamar('POST', '/api/painel/pedidos/' + id + '/nfce', { pagamento: $('#nf-pag').value, cpf: $('#nf-cpf').value })).nota;
+    const p = S.pedidos.find(x => x._id === id) || (S.histLista || []).find(x => x.id === id); if (p) p.nota = n;
+    if (n.status === 'autorizada'){ res.innerHTML = '<p class="okbox">NFC-e nº ' + esc(n.numero) + ' autorizada.' + (n.ambiente === 'demo' ? ' (demonstração, sem valor fiscal)' : '') + '</p><div class="row"><a class="btn" href="' + esc(n.urlDanfe) + '" target="_blank" rel="noopener">Abrir a nota</a></div>'; btn.hidden = true; }
+    else if (n.status === 'processando'){ res.innerHTML = '<p class="warnbox">A SEFAZ ainda está processando. Use “atualizar” no pedido daqui a pouco.</p>'; btn.hidden = true; }
+    else { res.innerHTML = '<p class="warnbox">A nota não foi autorizada: ' + esc(n.mensagem || 'erro no emissor') + '</p>'; btn.disabled = false; btn.textContent = 'Tentar de novo'; }
+    if (S.aba === 'pedidos') renderPedidos(); if (S.aba === 'hist') carregarHist();
+  } catch (e) { res.innerHTML = '<p class="warnbox">' + esc(e.message) + '</p>'; btn.disabled = false; btn.textContent = 'Emitir nota'; }
+}
+function abrirCancelarNota(id){
+  $('#modal').innerHTML = '<div class="veu" data-act="modal-fechar"><form class="caixa" id="f-nfc" data-id="' + id + '" role="dialog" aria-modal="true" aria-labelledby="nc-t" novalidate><h3 id="nc-t" style="margin-top:0">Cancelar NFC-e</h3>' +
+    '<p class="note" style="margin-top:0">Na maioria dos estados, a NFC-e só pode ser cancelada até 30 minutos depois de emitida.</p><label for="nc-j">Motivo do cancelamento</label><textarea id="nc-j" rows="3" maxlength="255" placeholder="Ex.: cliente desistiu da compra no caixa"></textarea>' +
+    '<div id="nc-res"></div><div class="row"><button class="btn danger" type="submit" id="nc-btn">Cancelar a nota</button><button class="btn ghost" type="button" data-act="modal-fechar">Voltar</button></div></form></div>';
+  $('#nc-j').focus();
+}
+async function cancelarNota(form){
+  const btn = $('#nc-btn'); btn.disabled = true;
+  try { await chamar('POST', '/api/painel/notas/' + form.dataset.id + '/cancelar', { justificativa: $('#nc-j').value }); fecharModal(); toast('Nota cancelada'); if (S.aba === 'hist') carregarHist(); }
+  catch (e) { $('#nc-res').innerHTML = '<p class="warnbox">' + esc(e.message) + '</p>'; btn.disabled = false; }
+}
 
 /* ---------- mapa de calor das mesas ---------- */
 function isDark(){ const a = document.documentElement.getAttribute('data-theme'); if (a) return a === 'dark'; try { return matchMedia('(prefers-color-scheme: dark)').matches; } catch (e) { return false; } }
@@ -446,7 +691,8 @@ try { matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () =
 document.addEventListener('click', async e => {
   const el = e.target.closest('[data-act]'); if (!el) return;
   const a = el.dataset.act, id = el.dataset.id;
-  const confirmaveis = ['cancelar', 'remover-prod', 'novo-codigo', 'remover-user'];
+  if (a === 'modal-fechar' && el.classList.contains('veu') && e.target !== el) return; // clique dentro da janela não fecha
+  const confirmaveis = ['cancelar', 'remover-prod', 'novo-codigo', 'remover-user', 'ins-remover', 'totem-codigo'];
   if (!confirmaveis.includes(a)) S.confirmar = null;
   switch (a){
     case 'sair': sair(); break;
@@ -479,6 +725,26 @@ document.addEventListener('click', async e => {
     case 'nova-senha': S.senhaPara = id || null; renderEquipe(); break;
     case 'abrir-senha': $('#f-senha').hidden = false; $('#s-atual').focus(); break;
     case 'fechar-senha': $('#f-senha').hidden = true; $('#f-senha').reset(); break;
+    case 'fechar-conta': { const n = el.dataset.n; el.disabled = true; try { const d = await chamar('POST', '/api/painel/mesas/' + n + '/fechar-conta'); toast('Conta da Mesa ' + pad(n) + ' fechada: ' + d.pedidos + (d.pedidos === 1 ? ' pedido, ' : ' pedidos, ') + brl(d.total)); } catch (err) { toast(err.message); el.disabled = false; } break; }
+    case 'nfce': abrirNfce(id); break;
+    case 'nota-cancelar': abrirCancelarNota(id); break;
+    case 'nota-atualizar': try { const n = (await chamar('GET', '/api/painel/notas/' + id)).nota; toast(n.status === 'autorizada' ? 'NFC-e autorizada' : n.status === 'erro' ? 'NFC-e não autorizada: ' + n.mensagem : 'Ainda processando'); } catch (err) { toast(err.message); } break;
+    case 'modal-fechar': fecharModal(); break;
+    case 'fi-mais': S.ficha.push({ insumo: '', qtd: '' }); desenharFicha(); break;
+    case 'fi-tirar': S.ficha.splice(+el.dataset.i, 1); desenharFicha(); break;
+    case 'ins-novo': S.novoIns = true; S.editIns = null; desenharEstoque(); $('#in-nome').focus(); break;
+    case 'ins-cancelar': S.novoIns = false; S.editIns = null; desenharEstoque(); break;
+    case 'ins-editar': S.editIns = S.editIns === id ? null : id; S.novoIns = false; S.movPara = null; desenharEstoque(); break;
+    case 'ins-remover': if (S.confirmar !== 'i' + id){ S.confirmar = 'i' + id; desenharEstoque(); break; } S.confirmar = null; try { await chamar('DELETE', '/api/painel/insumos/' + id); toast('Insumo removido'); renderEstoque(); } catch (err) { toast(err.message); } break;
+    case 'mov-abrir': S.movPara = S.movPara === id ? null : id; S.histIns = null; S.editIns = null; desenharEstoque(); if ($('#mv-q')) $('#mv-q').focus(); break;
+    case 'mov-tipo': S.movTipo = el.dataset.t; desenharEstoque(); $('#mv-q').focus(); break;
+    case 'mov-fechar': S.movPara = null; desenharEstoque(); break;
+    case 'ins-hist': if (S.histIns && S.histIns.id === id){ S.histIns = null; desenharEstoque(); break; } try { S.histIns = { id, l: (await chamar('GET', '/api/painel/insumos/' + id + '/movimentos')).movimentos }; S.movPara = null; desenharEstoque(); } catch (err) { toast(err.message); } break;
+    case 'ficha-editar': S.aba = 'produtos'; S.editId = id; S.formAberto = false; render().then(() => { const d = $('#f-prod details'); if (d) d.open = true; window.scrollTo(0, 0); }); break;
+    case 'totem-codigo': if (S.confirmar !== 'totem'){ S.confirmar = 'totem'; renderMesas(); break; } S.confirmar = null; try { S.totem = (await chamar('POST', '/api/painel/totem/novo-codigo')).token; toast('Novo link do totem gerado. Abra o link novo no tablet.'); renderMesas(); } catch (err) { toast(err.message); } break;
+    case 'modo-ent': { const dist = el.dataset.m === 'distancia'; $('#ent-dist').hidden = !dist; $('#ent-bairro').hidden = dist; $$('[data-act="modo-ent"]').forEach(b => b.setAttribute('aria-pressed', String(b === el))); if (dist) montarMapaConfig(); break; }
+    case 'local-buscar': buscarLocal(); break;
+    case 'local-esc': { const lat = +el.dataset.lat, lng = +el.dataset.lng; $('#c-lat').value = lat; $('#c-lng').value = lng; $('#local-res').innerHTML = ''; $('#local-txt').textContent = 'Local marcado. Arraste o pino para ajustar.'; montarMapaConfig(); break; }
     case 'remover-user': if (S.confirmar !== 'u' + id){ S.confirmar = 'u' + id; renderEquipe(); break; } S.confirmar = null; try { await chamar('DELETE', '/api/painel/equipe/' + id); toast('Acesso removido'); renderEquipe(); } catch (err) { toast(err.message); } break;
   }
 });
@@ -486,6 +752,9 @@ let buscaT;
 document.addEventListener('input', e => {
   const t = e.target;
   if (t.id === 'h-q'){ S.hq = t.value; S.hn = 25; clearTimeout(buscaT); buscaT = setTimeout(carregarHist, 300); return; }
+  if (t.dataset.fiQtd !== undefined && S.ficha){ S.ficha[+t.dataset.fiQtd].qtd = t.value; custoFicha(); return; }
+  if (t.id === 'p-preco'){ custoFicha(); return; }
+  if (t.id === 'nf-cpf'){ const v = t.value.replace(/\D/g, '').slice(0, 11).replace(/(\d{3})(\d)/, '$1.$2').replace(/(\d{3})\.(\d{3})(\d)/, '$1.$2.$3').replace(/(\d{3})\.(\d{3})\.(\d{3})(\d)/, '$1.$2.$3-$4'); if (v !== t.value) t.value = v; return; }
   if (t.dataset.fin && S.rel){ S.rel.premissas[t.dataset.fin] = Math.max(0, parseFloat(t.value) || 0); renderBal(); salvarPremissas(); }
 });
 document.addEventListener('change', async e => {
@@ -493,11 +762,27 @@ document.addEventListener('change', async e => {
   if (t.id === 'imp-larg'){ S.imp.largura = +t.value; salvarImp(); return; }
   if (t.id === 'imp-auto'){ S.imp.auto = t.checked; salvarImp(); toast(t.checked ? 'Pedidos novos vão imprimir sozinhos neste computador' : 'Impressão automática desligada'); renderPedidos(); return; }
   if (t.id === 'p-cat'){ $('#p-novacat-w').hidden = t.value !== '__nova'; return; }
+  if (t.dataset.foto){ enviarFoto(t); return; }
+  if (t.dataset.fiIns !== undefined && S.ficha){ S.ficha[+t.dataset.fiIns].insumo = t.value; desenharFicha(); return; }
+  if (t.id === 'tt-imp'){ S.totemImp = t.checked; renderMesas(); return; }
   if (t.dataset.preco){ const p = S.produtos.find(x => x._id === t.dataset.preco); try { const d = await chamar('PATCH', '/api/painel/produtos/' + p._id, { preco: t.value }); Object.assign(p, d.produto); toast('Preço de ' + p.nome + ': ' + brl(p.preco)); } catch (err) { toast(err.message); t.value = p.preco; } }
 });
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && $('#modal').innerHTML) fecharModal(); if (e.key === 'Enter' && e.target.id === 'c-local-q'){ e.preventDefault(); buscarLocal(); } });
 document.addEventListener('submit', async e => {
   if (e.target.id === 'f-prod') return salvarProduto(e);
   if (e.target.id === 'f-config') return salvarConfig(e);
+  if (e.target.id === 'f-nfce'){ e.preventDefault(); return emitirNfce(e.target); }
+  if (e.target.id === 'f-nfc'){ e.preventDefault(); return cancelarNota(e.target); }
+  if (e.target.id === 'f-mov'){
+    e.preventDefault(); const id = e.target.dataset.id, corpo = { tipo: S.movTipo, qtd: $('#mv-q').value };
+    if ($('#mv-c') && $('#mv-c').value !== '') corpo.custo = $('#mv-c').value;
+    try { const d = await chamar('POST', '/api/painel/insumos/' + id + '/movimento', corpo); toast(d.insumo.nome + ': ' + qtdTxt(d.insumo.estoque, d.insumo.unidade) + ' em estoque'); S.movPara = null; renderEstoque(); } catch (err) { toast(err.message); } return;
+  }
+  if (e.target.classList.contains('f-ins')){
+    e.preventDefault(); const id = e.target.dataset.id, corpo = { nome: $('#in-nome').value, unidade: $('#in-un').value, custo: $('#in-custo').value, minimo: $('#in-min').value };
+    if (!id) corpo.estoque = $('#in-est').value;
+    try { await chamar(id ? 'PUT' : 'POST', '/api/painel/insumos' + (id ? '/' + id : ''), corpo); toast(id ? 'Insumo atualizado' : 'Insumo cadastrado'); S.novoIns = false; S.editIns = null; renderEstoque(); } catch (err) { toast(err.message); } return;
+  }
   if (e.target.classList.contains('eq-senha')){
     e.preventDefault(); const uid = e.target.dataset.uid, u = S.equipe.find(x => String(x.id) === uid);
     try { await chamar('POST', '/api/painel/equipe/' + uid + '/senha', { senha: $('#ns-' + uid).value }); S.senhaPara = null; toast('Senha de ' + (u ? u.nome : 'a pessoa') + ' trocada. Passe a nova senha para ela.'); renderEquipe(); }

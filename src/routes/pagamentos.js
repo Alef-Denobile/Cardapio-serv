@@ -8,6 +8,7 @@ const pagamentos = require('../lib/pagamentos');
 const { ErroApp, rota, texto, iguais, uuidValido, pedidoParaCliente } = require('../lib/util');
 const rt = require('../realtime');
 const whatsapp = require('../lib/whatsapp');
+const estoque = require('../lib/estoque');
 
 const r = express.Router();
 const limite = rateLimit({ windowMs: 10 * 60 * 1000, limit: 30, standardHeaders: true, legacyHeaders: false, message: { erro: 'Muitas tentativas. Aguarde alguns minutos.' } });
@@ -52,7 +53,10 @@ async function cancelarVencidos() {
   try {
     const n = await sistema(async c => {
       const rows = (await c.query("UPDATE pedidos SET status = 'cancelado' WHERE status = 'aguardando' AND criado_em < now() - interval '30 minutes' RETURNING id, restaurante_id")).rows;
-      for (const x of rows) await c.query('INSERT INTO pedido_historico (pedido_id, restaurante_id, status, por) VALUES ($1,$2,$3,$4)', [x.id, x.restaurante_id, 'cancelado', 'pagamento não concluído']);
+      for (const x of rows) {
+        await c.query('INSERT INTO pedido_historico (pedido_id, restaurante_id, status, por) VALUES ($1,$2,$3,$4)', [x.id, x.restaurante_id, 'cancelado', 'pagamento não concluído']);
+        await estoque.devolver(c, x.restaurante_id, x.id, 'pagamento não concluído'); // devolve o que a venda tinha reservado
+      }
       return rows.length;
     });
     if (n) console.log(`Cancelados ${n} pedido(s) sem pagamento.`);

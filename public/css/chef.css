@@ -407,3 +407,23 @@ footer .wrap{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap}
 .add-r.tem{opacity:1;transform:none}
 [hidden]{display:none!important}
 .prod-add .ico-carr{margin-right:10px}
+
+/* ---------- agendamento, entrega por distância e "peça também" ---------- */
+.resumo .tipo button:only-child{grid-column:1/-1}
+.resumo .ag-sel{display:grid;grid-template-columns:1.3fr 1fr;gap:6px}
+.busca-end{display:flex;gap:6px}
+.busca-end input{flex:1;min-width:0}
+.resumo .busca-end .chip{background:#fff;color:var(--red);border:0;font-weight:800;white-space:nowrap}
+.end-res{display:flex;flex-direction:column;gap:4px;background:rgb(255 255 255 / .96);border-radius:6px;padding:4px;color:#1D2142}
+.end-res button{border:0;background:transparent;text-align:left;font:600 13px/1.35 var(--body);padding:8px;border-radius:5px;color:#1D2142}
+.end-res button:hover,.end-res button:focus-visible{background:#F6EEEE}
+.end-res span{font-size:13px;padding:8px}
+.mapa-ent{height:220px;border-radius:8px;overflow:hidden;background:#E8E4E2;margin-top:2px;z-index:0}
+.mapa-ent .leaflet-control-attribution{font-size:10px}
+.mapa-acoes{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.resumo .mapa-acoes .chip{background:transparent;color:#fff;border:1px solid rgb(255 255 255 / .6);font-weight:800}
+.mapa-acoes .dist{font-size:13px;font-weight:700;flex:1;min-width:150px}
+.mapa-acoes .dist.fora{background:#fff;color:#A92F2F;border-radius:6px;padding:6px 8px}
+.agendado{display:flex;gap:6px;align-items:center;margin:0;font-weight:800;color:var(--red)}
+.agendado svg{width:18px;height:18px}
+.peca .sec-h h2{color:var(--red)}

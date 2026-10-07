@@ -9,7 +9,9 @@ const RECURSOS = {
   cartao: 'Cartão na entrega',
   dinheiro: 'Dinheiro na entrega',
   online: 'Pagamento pelo site (entrega)',
-  whatsapp: 'Avisos automáticos no WhatsApp'
+  whatsapp: 'Avisos automáticos no WhatsApp',
+  totem: 'Modo totem (autoatendimento no balcão)',
+  nfce: 'Nota fiscal do consumidor (NFC-e)'
 };
 
 function recursosDe(rest) {

@@ -24,9 +24,10 @@
       '.tot{font-weight:700;font-size:' + (fonte + 2) + 'px}.obs{border:1px solid #000;padding:1mm;margin-top:1.5mm;font-weight:700}' +
       '</style></head><body>' +
       '<h1>' + esc(rest && rest.nome) + '</h1><div class="c">' + quando + '</div>' +
-      '<div class="big">PEDIDO #' + p.numero + '</div><div class="tag">' + tipo + '</div>' +
+      '<div class="big">PEDIDO #' + p.numero + '</div><div class="tag">' + tipo + (p.origem === 'totem' ? ' · TOTEM · ' + (p.consumo === 'viagem' ? 'PARA LEVAR' : 'COMER AQUI') : '') + '</div>' +
+      (p.agendadoPara ? '<div class="tag">AGENDADO PARA ' + new Date(p.agendadoPara).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) + '</div>' : '') +
       '<div>Cliente: <b>' + esc(p.cliente && p.cliente.nome) + '</b></div>' + (p.cliente && p.cliente.tel ? '<div>Tel: ' + esc(p.cliente.tel) + '</div>' : '') +
-      (e ? '<div>End.: <b>' + esc(e.endereco) + (e.complemento ? ', ' + esc(e.complemento) : '') + '</b></div><div>Bairro: ' + esc(e.bairro) + '</div>' + (e.referencia ? '<div>Ref.: ' + esc(e.referencia) + '</div>' : '') : '') +
+      (e ? '<div>End.: <b>' + esc(e.endereco) + (e.complemento ? ', ' + esc(e.complemento) : '') + '</b></div><div>Bairro: ' + esc(e.bairro) + (e.km != null ? ' · ' + String(e.km).replace('.', ',') + ' km' : '') + '</div>' + (e.referencia ? '<div>Ref.: ' + esc(e.referencia) + '</div>' : '') : '') +
       '<hr>' + p.linhas.map(l => '<div class="it">' + linha('<b>' + l.qtd + 'x</b>' + esc(l.nome), brl(l.unit * l.qtd)) + (l.opcoes && l.opcoes.length ? '<div class="op">' + esc(l.opcoes.join(', ')) + '</div>' : '') + '</div>').join('') +
       (p.obs ? '<div class="obs">OBS: ' + esc(p.obs) + '</div>' : '') + '<hr>' +
       linha('Subtotal', brl(p.subtotal)) + (p.servico ? linha('Serviço', brl(p.servico)) : '') + (p.tipo === 'delivery' ? linha('Entrega', p.taxaEntrega ? brl(p.taxaEntrega) : 'Grátis') : '') +

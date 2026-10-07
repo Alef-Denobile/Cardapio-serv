@@ -10,6 +10,10 @@ const { limparProduto, limparConfig } = require('../lib/dados');
 const { recursosDe } = require('../lib/recursos');
 const rt = require('../realtime');
 const whatsapp = require('../lib/whatsapp');
+const estoque = require('../lib/estoque');
+const notas = require('../lib/notas');
+const fiscal = require('../lib/fiscal');
+const config = require('../config');
 
 const r = express.Router();
 const equipe = exigir();            // dono, cozinha ou entregador
@@ -18,6 +22,8 @@ const comRecurso = k => (req, res, next) => recursosDe(req.rest)[k] ? next() : n
 const noRest = (req, fn) => doRestaurante(req.rid, fn);
 const semCodigo = p => { const o = Object.assign({}, p); delete o.codigoAcomp; return o; };
 
+const chamadoObj = x => ({ _id: x.id, mesa: x.mesa, tipo: x.tipo, pagamento: x.pagamento, pessoas: x.pessoas, total: x.total, createdAt: x.criado_em });
+
 /* ---------- Pedidos ---------- */
 r.get('/pedidos', equipe, rota(async (req, res) => {
   const out = await noRest(req, async c => {
@@ -25,8 +31,10 @@ r.get('/pedidos', equipe, rota(async (req, res) => {
     const soEntrega = req.usuario.papel === 'entregador';
     const rows = (await c.query("SELECT * FROM pedidos WHERE restaurante_id = $1 AND status IN ('novo','preparo','pronto','rota')" + (soEntrega ? " AND tipo = 'delivery'" : '') + ' ORDER BY criado_em LIMIT 300', [req.rid])).rows;
     const finalizadosHoje = (await c.query("SELECT count(*)::int AS n FROM pedidos WHERE restaurante_id = $1 AND status = 'entregue' AND criado_em >= $2", [req.rid, inicioDoDia(rest.fuso)])).rows[0].n;
-    const chamados = soEntrega ? [] : (await c.query('SELECT * FROM chamados WHERE restaurante_id = $1 AND NOT atendido ORDER BY criado_em', [req.rid])).rows.map(x => ({ _id: x.id, mesa: x.mesa, tipo: x.tipo, createdAt: x.criado_em }));
-    return { pedidos: await repo.completarPedidos(c, rows), chamados, finalizadosHoje };
+    const chamados = soEntrega ? [] : (await c.query('SELECT * FROM chamados WHERE restaurante_id = $1 AND NOT atendido ORDER BY criado_em', [req.rid])).rows.map(chamadoObj);
+    const pedidos = await repo.completarPedidos(c, rows);
+    if (!soEntrega && recursosDe(req.rest).nfce) { const ns = await notas.notasDosPedidos(c, req.rid, pedidos.map(x => x.id)); pedidos.forEach(x => { x.nota = ns.get(x.id) || null; }); }
+    return { pedidos, chamados, finalizadosHoje };
   });
   res.json(out);
 }));
@@ -66,11 +74,13 @@ r.patch('/pedidos/:id/status', equipe, rota(async (req, res) => {
     await c.query('UPDATE pedidos SET status = $3, entregador_id = COALESCE($4, entregador_id), entregador_nome = COALESCE($5, entregador_nome), pag_pago = pag_pago OR ($3 = \'entregue\' AND pag_metodo <> \'pix\') WHERE id = $1 AND restaurante_id = $2',
       [row.id, req.rid, novo, ent && ent.id, ent && ent.nome]);
     await c.query('INSERT INTO pedido_historico (pedido_id, restaurante_id, status, por) VALUES ($1, $2, $3, $4)', [row.id, req.rid, novo, u.nome]);
+    if (novo === 'cancelado') await estoque.devolver(c, req.rid, row.id, 'cancelado por ' + u.nome); // o que foi baixado volta ao estoque
     return (await repo.buscarPedido(c, req.rid, row.id)).obj;
   });
   rt.paraEquipe(req.rid, 'pedido:atualizado', p);
   rt.paraCliente(p.id, 'pedido:atualizado', pedidoParaCliente(p), p.clienteId);
   whatsapp.avisar(req.rest, p);
+  if (p.status === 'entregue') notas.automatica(req.rid, p); // NFC-e automática, se o dono ligou
   res.json({ pedido: semCodigo(p) });
 }));
 
@@ -91,15 +101,89 @@ r.patch('/pedidos/:id/pagamento', equipe, rota(async (req, res) => {
 /* ---------- Chamados de mesa ---------- */
 r.patch('/chamados/:id', equipe, rota(async (req, res) => {
   if (!uuidValido(req.params.id)) throw new ErroApp(404, 'Chamado não encontrado.');
-  const n = await noRest(req, async c => (await c.query('UPDATE chamados SET atendido = true WHERE id = $1 AND restaurante_id = $2', [req.params.id, req.rid])).rowCount);
+  const n = await noRest(req, async c => (await c.query('UPDATE chamados SET atendido = true, atendido_em = now() WHERE id = $1 AND restaurante_id = $2', [req.params.id, req.rid])).rowCount);
   if (!n) throw new ErroApp(404, 'Chamado não encontrado.');
   rt.paraEquipe(req.rid, 'chamado:atendido', { _id: req.params.id });
   res.json({ ok: true });
 }));
+// Fechar a conta da mesa: marca como pagos os pedidos em aberto da mesa e encerra os chamados dela
+r.post('/mesas/:numero/fechar-conta', equipe, rota(async (req, res) => {
+  if (req.usuario.papel === 'entregador') throw new ErroApp(403, 'Você não tem permissão para fazer isso.');
+  const n = Math.trunc(numero(req.params.numero));
+  const out = await noRest(req, async c => {
+    const rows = (await c.query(`UPDATE pedidos SET pag_pago = true WHERE restaurante_id = $1 AND tipo = 'mesa' AND mesa = $2 AND NOT pag_pago
+      AND status NOT IN ('cancelado', 'aguardando') AND criado_em > now() - interval '12 hours' RETURNING *`, [req.rid, n])).rows;
+    for (const x of rows) await c.query('INSERT INTO pedido_historico (pedido_id, restaurante_id, status, por) VALUES ($1,$2,$3,$4)', [x.id, req.rid, x.status, 'conta fechada por ' + req.usuario.nome]);
+    const chs = (await c.query('UPDATE chamados SET atendido = true, atendido_em = now() WHERE restaurante_id = $1 AND mesa = $2 AND NOT atendido RETURNING id', [req.rid, n])).rows;
+    return { pedidos: await repo.completarPedidos(c, rows), chamados: chs.map(x => x.id) };
+  });
+  out.pedidos.forEach(p => { rt.paraEquipe(req.rid, 'pedido:atualizado', p); rt.paraCliente(p.id, 'pedido:atualizado', pedidoParaCliente(p), p.clienteId); });
+  out.chamados.forEach(id => rt.paraEquipe(req.rid, 'chamado:atendido', { _id: id }));
+  res.json({ pedidos: out.pedidos.length, total: Math.round(out.pedidos.reduce((a, p) => a + p.total, 0) * 100) / 100 });
+}));
+
+/* ---------- NFC-e ---------- */
+const notaEquipe = (req, res, next) => req.usuario.papel === 'entregador' ? next(new ErroApp(403, 'Você não tem permissão para fazer isso.')) : next();
+r.post('/pedidos/:id/nfce', equipe, notaEquipe, comRecurso('nfce'), rota(async (req, res) => {
+  if (!uuidValido(req.params.id)) throw new ErroApp(404, 'Pedido não encontrado.');
+  const b = req.body || {};
+  res.status(201).json({ nota: await notas.emitir(req.rid, req.params.id, { pagamento: texto(b.pagamento, 2), cpf: texto(b.cpf, 20) }) });
+}));
+r.get('/notas/:id', equipe, notaEquipe, comRecurso('nfce'), rota(async (req, res) => {
+  if (!uuidValido(req.params.id)) throw new ErroApp(404, 'Nota não encontrada.');
+  res.json({ nota: await notas.atualizar(req.rid, req.params.id) });
+}));
+r.post('/notas/:id/cancelar', dono, comRecurso('nfce'), rota(async (req, res) => {
+  if (!uuidValido(req.params.id)) throw new ErroApp(404, 'Nota não encontrada.');
+  res.json({ nota: await notas.cancelar(req.rid, req.params.id, req.body && req.body.justificativa) });
+}));
+
+/* ---------- Fotos enviadas do celular ou do computador ---------- */
+function tipoDaImagem(b) {
+  if (b.length > 3 && b[0] === 0xFF && b[1] === 0xD8 && b[2] === 0xFF) return 'image/jpeg';
+  if (b.length > 8 && b.slice(0, 8).equals(Buffer.from([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]))) return 'image/png';
+  if (b.length > 12 && b.slice(0, 4).toString('ascii') === 'RIFF' && b.slice(8, 12).toString('ascii') === 'WEBP') return 'image/webp';
+  return null;
+}
+r.post('/fotos', dono, express.raw({ type: ['image/jpeg', 'image/png', 'image/webp'], limit: '3mb' }), rota(async (req, res) => {
+  const buf = req.body;
+  if (!Buffer.isBuffer(buf) || !buf.length) throw new ErroApp(400, 'Envie uma foto JPG, PNG ou WEBP.');
+  const tipo = tipoDaImagem(buf);
+  if (!tipo) throw new ErroApp(400, 'Esse arquivo não parece uma foto. Use JPG, PNG ou WEBP.');
+  const id = await noRest(req, async c => {
+    // apaga fotos enviadas há mais de um dia que não estão em uso (troca de foto, envio cancelado)
+    await c.query(`DELETE FROM fotos f WHERE f.restaurante_id = $1 AND f.criado_em < now() - interval '1 day'
+      AND NOT EXISTS (SELECT 1 FROM produtos p WHERE p.restaurante_id = $1 AND p.foto_url = '/f/' || f.id)
+      AND NOT EXISTS (SELECT 1 FROM restaurantes r WHERE r.id = $1 AND ('/f/' || f.id) IN (r.logo_url, r.capa_url))`, [req.rid]);
+    const n = (await c.query('SELECT count(*)::int AS n FROM fotos WHERE restaurante_id = $1', [req.rid])).rows[0].n;
+    if (n >= 400) throw new ErroApp(409, 'Limite de 400 fotos atingido. Remova produtos antigos ou fale com o suporte.');
+    return (await c.query('INSERT INTO fotos (restaurante_id, tipo, dados, tamanho) VALUES ($1,$2,$3,$4) RETURNING id', [req.rid, tipo, buf, buf.length])).rows[0].id;
+  });
+  res.status(201).json({ url: '/f/' + id });
+}));
+
+/* ---------- Modo totem ---------- */
+r.get('/totem', dono, comRecurso('totem'), rota(async (req, res) => {
+  const t = await noRest(req, async c => {
+    const atual = (await c.query('SELECT totem_token FROM restaurantes WHERE id = $1', [req.rid])).rows[0].totem_token;
+    if (atual) return atual;
+    return (await c.query('UPDATE restaurantes SET totem_token = $2 WHERE id = $1 RETURNING totem_token', [req.rid, tokenAleatorio(12)])).rows[0].totem_token;
+  });
+  res.json({ token: t });
+}));
+r.post('/totem/novo-codigo', dono, comRecurso('totem'), rota(async (req, res) => {
+  const t = await noRest(req, async c => (await c.query('UPDATE restaurantes SET totem_token = $2 WHERE id = $1 RETURNING totem_token', [req.rid, tokenAleatorio(12)])).rows[0].totem_token);
+  res.json({ token: t });
+}));
 
 /* ---------- Produtos ---------- */
 r.get('/produtos', equipe, rota(async (req, res) => {
-  res.json({ produtos: await noRest(req, c => repo.listarProdutos(c, req.rid)) });
+  const out = await noRest(req, async c => {
+    const l = await repo.listarProdutos(c, req.rid), resumo = await estoque.resumoProdutos(c, req.rid);
+    const dono = req.usuario.papel === 'dono';
+    return l.map(p => { const r0 = resumo.get(p.id); return Object.assign(p, { semEstoque: r0 ? r0.semEstoque : [], ficha: r0 && dono ? r0.ficha : [], custo: r0 && dono ? r0.custo : null }); });
+  });
+  res.json({ produtos: out });
 }));
 r.post('/produtos', dono, rota(async (req, res) => {
   const dados = limparProduto(req.body || {});
@@ -135,9 +219,9 @@ r.delete('/produtos/:id', dono, rota(async (req, res) => {
 }));
 
 /* ---------- Configurações do restaurante ---------- */
-const paraDono = rest => { const o = Object.assign({}, rest); delete o.observacoes; return o; };
+const paraDono = rest => { const o = Object.assign({}, rest); delete o.observacoes; delete o.totemToken; return o; };
 r.get('/restaurante', dono, rota(async (req, res) => {
-  res.json({ restaurante: paraDono(await noRest(req, c => repo.carregarRest(c, req.rid))) });
+  res.json({ restaurante: paraDono(await noRest(req, c => repo.carregarRest(c, req.rid))), fiscalProvedor: config.fiscalProvedor, buscaEndereco: config.buscaEndereco });
 }));
 r.put('/restaurante', dono, rota(async (req, res) => {
   const mud = limparConfig(req.body);

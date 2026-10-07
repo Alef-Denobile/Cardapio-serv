@@ -375,3 +375,48 @@ body::before{content:"";display:block;height:6px;margin-inline:-16px;background:
 .login .table-tag,.login .dev-flag{color:var(--brand);background:transparent;padding:0}
 .login h1{font-weight:900}
 @media (min-width:700px){.pro-head{margin-inline:0;border-radius:16px;margin-top:12px}body::before{margin-inline:-16px}}
+
+/* ---------- mesa: "peça também" e conta ---------- */
+.peca{margin:14px 0 4px;padding:12px;border-radius:14px;background:var(--chip)}
+.peca-t{margin:0 0 8px;font-weight:900;color:var(--brand)}
+.peca-i{display:grid;grid-template-columns:44px 1fr auto;gap:10px;align-items:center;padding:6px 0}
+.peca-i .ph{width:44px;height:44px;border-radius:10px;overflow:hidden;display:grid;place-items:center;background:var(--surface)}
+.peca-i .ph img{width:100%;height:100%;object-fit:cover}
+.peca-i .ph svg{width:26px;height:26px;color:var(--brand)}
+.peca-n{display:flex;flex-direction:column;min-width:0}
+.peca-n strong{font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.peca-n small{color:var(--muted)}
+.okbox{background:var(--good-bg);color:var(--good);border-radius:12px;padding:12px 14px;font-weight:800}
+
+/* ---------- painel: janelas, agendados, fotos, ficha técnica, estoque, mapa ---------- */
+.b-crit{background:var(--crit-bg);color:var(--crit)}
+#modal .veu{position:fixed;inset:0;background:rgb(10 12 30 / .5);display:grid;place-items:center;padding:16px;z-index:60}
+#modal .caixa{background:var(--surface);color:var(--ink);border-radius:18px;padding:22px;width:min(460px,100%);max-height:calc(100dvh - 32px);overflow:auto;box-shadow:0 20px 50px rgb(0 0 0 / .3)}
+#modal .caixa select,#modal .caixa input,#modal .caixa textarea{width:100%}
+.agds{margin:0 0 14px;padding:12px 16px}
+.agds summary{display:flex;gap:8px;align-items:center;cursor:pointer;flex-wrap:wrap}
+.agd{display:grid;grid-template-columns:120px 1fr auto auto;gap:4px 14px;align-items:center;padding:10px 0;border-top:1px solid var(--line)}
+.agd:first-of-type{margin-top:8px}
+.agd span:nth-child(3){grid-column:2/3}
+@media (max-width:640px){.agd{grid-template-columns:1fr auto}.agd span:nth-child(3){grid-column:1/-1}}
+.calls .call{flex-wrap:wrap;gap:8px}
+.foto-up{display:flex;gap:14px;align-items:flex-start;flex-wrap:wrap}
+.foto-prev{width:96px;height:96px;border-radius:14px;background:var(--chip);display:grid;place-items:center;overflow:hidden;flex:0 0 auto;color:var(--muted);font-size:12px;font-weight:700;text-align:center}
+.foto-prev img{width:100%;height:100%;object-fit:cover}
+.arq{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none}
+.btn.disabled{opacity:.6;pointer-events:none}
+.sub-card{border:1px solid var(--line);border-radius:12px;padding:10px 14px;margin-top:14px}
+.sub-card summary{cursor:pointer;font-weight:800}
+.fi-row{display:grid;grid-template-columns:minmax(0,1.6fr) 110px minmax(0,1fr) auto;gap:8px;align-items:center;margin-top:8px}
+.fi-row select,.fi-row input{width:100%;margin:0}
+.fi-un{font-size:12.5px;color:var(--muted)}
+@media (max-width:640px){.fi-row{grid-template-columns:1fr 90px}.fi-un{grid-column:1/2}}
+small.lucro{display:block;color:var(--good);font-weight:700}
+.mov-row td{background:var(--chip)}
+.movs{list-style:none;margin:0;padding:0;font-size:13.5px}
+.movs li{display:grid;grid-template-columns:120px 110px 1fr;gap:10px;padding:5px 0;border-bottom:1px solid var(--line)}
+.movs .neg{color:var(--crit);font-weight:700}.movs .pos{color:var(--good);font-weight:700}
+.mapa-cfg{height:260px;border-radius:12px;overflow:hidden;background:var(--chip);margin-top:10px;z-index:0}
+.end-res{display:flex;flex-direction:column;gap:2px;margin-top:6px;border:1px solid var(--line);border-radius:10px;padding:4px;background:var(--surface)}
+.end-res button{border:0;background:transparent;text-align:left;padding:8px;border-radius:6px;font:600 13px var(--body);color:var(--ink);cursor:pointer}
+.end-res button:hover{background:var(--chip)}

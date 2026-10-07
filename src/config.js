@@ -22,7 +22,12 @@ const config = {
   },
   // Restaurante da página inicial (/) do site
   siteRestaurante: (process.env.SITE_RESTAURANTE || 'sabor-da-casa').trim().toLowerCase(),
-  suporteEmail: (process.env.SUPORTE_EMAIL || '').trim()
+  suporteEmail: (process.env.SUPORTE_EMAIL || '').trim(),
+  // Emissor de NFC-e: "demo" (simula, sem valor fiscal), "focusnfe" (emissão real) ou "off"
+  fiscalProvedor: (process.env.FISCAL_PROVEDOR === undefined ? 'demo' : process.env.FISCAL_PROVEDOR).trim().toLowerCase().replace(/^off$/, ''),
+  // Busca de endereço para a taxa por distância (OpenStreetMap/Nominatim). "off" desliga a busca (o cliente marca no mapa).
+  buscaEndereco: !/^(off|0|false)$/i.test(process.env.BUSCA_ENDERECO || ''),
+  buscaEnderecoContato: (process.env.BUSCA_ENDERECO_CONTATO || process.env.SUPORTE_EMAIL || '').trim()
 };
 
 if (!config.jwtSecret) {

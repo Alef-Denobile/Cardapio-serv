@@ -58,6 +58,42 @@ const PRATOS = [
   ['Bebidas', 'Chá gelado da casa', '500 ml, com limão e hortelã', 9, 'https://images.unsplash.com/photo-1758705206938-a196ac3ae3bb?w=800&q=80&auto=format&fit=crop', false, ['vegano'], []]
 ];
 
+// "Peça também": o que o restaurante sugere no carrinho
+const SUGERIR = ['Refrigerante lata', 'Batata frita tradicional', 'Brownie com sorvete', 'Suco natural 500 ml', 'Casquinha de chocolate'];
+// Estoque de exemplo: [nome, unidade, estoque, mínimo, custo por unidade]
+const INSUMOS = [
+  ['Massa de pizza', 'un', 60, 10, 2.5], ['Mussarela', 'kg', 12, 2, 38], ['Molho de tomate', 'kg', 8, 1.5, 14], ['Pepperoni', 'kg', 3, 0.5, 68],
+  ['Calabresa', 'kg', 4, 0.8, 32], ['Gorgonzola', 'kg', 0.25, 0.3, 96], ['Pão de hambúrguer', 'un', 80, 15, 1.4], ['Blend bovino 150 g', 'un', 70, 15, 6.2],
+  ['Queijo cheddar', 'kg', 3, 0.5, 52], ['Bacon', 'kg', 4, 0.8, 45], ['Batata', 'kg', 25, 5, 6.5], ['Massa fresca', 'kg', 10, 2, 18],
+  ['Carne moída', 'kg', 8, 2, 36], ['Frango', 'kg', 10, 2, 22], ['Camarão', 'kg', 2.5, 0.5, 89], ['Tortilla', 'un', 60, 12, 0.9],
+  ['Refrigerante lata', 'un', 96, 24, 3.1], ['Água mineral', 'un', 60, 12, 1.2], ['Laranja', 'kg', 15, 3, 4.5], ['Sorvete de creme', 'l', 6, 1.5, 22],
+  ['Chocolate', 'kg', 2, 0.5, 48], ['Leite condensado', 'un', 0, 4, 7.9]
+];
+// Ficha técnica: prato -> [[insumo, quantidade por unidade vendida]]
+const FICHAS = {
+  'Pizza de pepperoni': [['Massa de pizza', 1], ['Mussarela', 0.25], ['Molho de tomate', 0.12], ['Pepperoni', 0.09]],
+  'Pizza margherita': [['Massa de pizza', 1], ['Mussarela', 0.28], ['Molho de tomate', 0.15]],
+  'Pizza quatro queijos': [['Massa de pizza', 1], ['Mussarela', 0.2], ['Gorgonzola', 0.08], ['Molho de tomate', 0.1]],
+  'Pizza especial da casa': [['Massa de pizza', 1], ['Mussarela', 0.22], ['Calabresa', 0.12], ['Molho de tomate', 0.12]],
+  'Espaguete à bolonhesa': [['Massa fresca', 0.18], ['Carne moída', 0.15], ['Molho de tomate', 0.12]],
+  'Lasanha da casa': [['Massa fresca', 0.15], ['Carne moída', 0.15], ['Mussarela', 0.1], ['Molho de tomate', 0.15]],
+  'Hambúrguer duplo': [['Pão de hambúrguer', 1], ['Blend bovino 150 g', 2], ['Queijo cheddar', 0.04], ['Bacon', 0.04]],
+  'Cheeseburger clássico': [['Pão de hambúrguer', 1], ['Blend bovino 150 g', 1], ['Queijo cheddar', 0.03]],
+  'Burger de frango crocante': [['Pão de hambúrguer', 1], ['Frango', 0.15]],
+  'Batata frita tradicional': [['Batata', 0.35]], 'Batata rústica': [['Batata', 0.4]], 'Batata com cheddar e bacon': [['Batata', 0.35], ['Queijo cheddar', 0.06], ['Bacon', 0.05]],
+  'Tacos de camarão': [['Tortilla', 3], ['Camarão', 0.15]], 'Burrito de carne': [['Tortilla', 1], ['Carne moída', 0.15]],
+  'Bowl de frango e grãos': [['Frango', 0.18]], 'Refrigerante lata': [['Refrigerante lata', 1]], 'Água mineral 500 ml': [['Água mineral', 1]],
+  'Suco natural 500 ml': [['Laranja', 0.6]], 'Casquinha de chocolate': [['Sorvete de creme', 0.12], ['Chocolate', 0.01]],
+  'Brownie com sorvete': [['Chocolate', 0.06], ['Sorvete de creme', 0.1]], 'Pudim de leite': [['Leite condensado', 0.25]]
+};
+async function criarEstoque(c, rest, produtos) {
+  const ids = {};
+  for (const [nome, unidade, est, min, custo] of INSUMOS)
+    ids[nome] = (await c.query('INSERT INTO insumos (restaurante_id, nome, unidade, estoque, minimo, custo) VALUES ($1,$2,$3,$4,$5,$6) RETURNING id', [rest.id, nome, unidade, est, min, custo])).rows[0].id;
+  for (const p of produtos) for (const [ins, q] of (FICHAS[p.nome] || []))
+    await c.query('INSERT INTO ficha_tecnica (restaurante_id, produto_id, insumo_id, qtd) VALUES ($1,$2,$3,$4)', [rest.id, p.id, ids[ins], q]);
+}
+
 // Pedidos de exemplo dos últimos 30 dias, para demonstrar relatórios e o mapa das mesas
 async function gerarHistorico(c, rest, produtos) {
   let semente = 20261005;
@@ -139,15 +175,27 @@ async function criarDemo(c, { reset = false, historico = false } = {}) {
       capaUrl: F('pizza'), cor: '#D23F3F', abre: '11:00', fecha: '23:30', aceitarForaDoHorario: true, taxaServico: 10, chavePix: 'pix@sabordacasa.com', whatsapp: '(15) 99999-0000',
       categorias: CATEGORIAS,
       delivery: { ativo: true, tempo: '35–45 min', tempoRetirada: '20–30 min', pedidoMinimo: 30, gratisAcimaDe: 100,
-        bairros: [{ nome: 'Centro', taxa: 6 }, { nome: 'Jardim América', taxa: 8 }, { nome: 'Vila Nova', taxa: 10 }, { nome: 'Campolim', taxa: 12 }] } }
+        bairros: [{ nome: 'Centro', taxa: 6 }, { nome: 'Jardim América', taxa: 8 }, { nome: 'Vila Nova', taxa: 10 }, { nome: 'Campolim', taxa: 12 }],
+        // já deixa a taxa por distância pronta: basta trocar o modo nas configurações do painel
+        modo: 'bairro', local: { lat: -23.5016, lng: -47.4581, endereco: 'Centro, Sorocaba - SP (endereço de exemplo)' },
+        faixas: [{ ate: 3, taxa: 6 }, { ate: 5, taxa: 8 }, { ate: 8, taxa: 11 }, { ate: 12, taxa: 15 }] },
+      agendamento: { ativo: true, antecedencia: 60, dias: 2, preparo: 45 },
+      fiscal: { cnpj: '', ie: '', razao: 'Sabor da Casa Restaurante LTDA (exemplo)', regime: '1', ambiente: 'homologacao', auto: false, ncm: '21069090', cfop: '5102', csosn: '102' } }
   });
+  // NFC-e em modo de demonstração e totem já liberados no exemplo
+  await c.query('UPDATE restaurantes SET rec_nfce = true, rec_totem = true, totem_token = $2 WHERE id = $1', [rest.id, require('./util').tokenAleatorio(12)]);
   const hash = await bcrypt.hash(SENHA, 10);
   for (const [nome, email, papel] of [['Cozinha', EMAILS.cozinha, 'cozinha'], ['Carlos', EMAILS.carlos, 'entregador'], ['Rafa', EMAILS.rafa, 'entregador']])
     await c.query('INSERT INTO usuarios (restaurante_id, nome, email, papel, senha_hash) VALUES ($1,$2,$3,$4,$5)', [rest.id, nome, email, papel, hash]);
   const criados = [];
   for (const [categoria, nome, descricao, preco, foto, destaque, selos, opcoes] of PRATOS)
     criados.push(await repo.criarProduto(c, rest.id, { categoria, nome, descricao, preco, selos, opcoes, fotoUrl: /^https?:\/\//.test(foto) ? foto : (foto ? F(foto) : ''), esgotado: false, destaque }));
+  await c.query('UPDATE produtos SET sugerir = true WHERE restaurante_id = $1 AND nome = ANY($2)', [rest.id, SUGERIR]);
+  await criarEstoque(c, rest, criados);
   const nHist = historico ? await gerarHistorico(c, rest, criados) : 0;
+  // custo dos itens vendidos pela ficha técnica, para o relatório de lucro por prato
+  if (historico) await c.query(`UPDATE pedido_itens i SET custo = x.custo FROM (SELECT f.produto_id, sum(f.qtd * n.custo) AS custo FROM ficha_tecnica f JOIN insumos n ON n.id = f.insumo_id WHERE f.restaurante_id = $1 GROUP BY f.produto_id) x
+    WHERE i.restaurante_id = $1 AND i.produto_id = x.produto_id`, [rest.id]);
   const nAv = historico ? await avaliar(c, rest) : 0;
   return { rest, nHist, nAv };
 }
