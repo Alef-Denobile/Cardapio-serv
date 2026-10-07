@@ -9,7 +9,7 @@ const config = {
   jwtSecret: process.env.JWT_SECRET || '',
   urlPublica: (process.env.PUBLIC_URL || '').replace(/\/+$/, ''),
   jwtValidade: '12h',
-  // Contas de cliente no ChefOnline: desligadas. O cliente pede sem cadastro. Ligue com CLIENTE_CONTAS=on se um dia quiser conta opcional.
+  // Contas de cliente: só para pagar a entrega pelo site. CLIENTE_CONTAS=off desliga contas e pagamento pelo site.
   clienteContas: !/^(off|0|false|nao|não)$/i.test(process.env.CLIENTE_CONTAS || ''),
   // Empresa que processa o pagamento pelo site. "demo" = tela de demonstração (não cobra nada). Vazio ou "off" = desligado.
   pagamentoProvedor: (process.env.PAGAMENTO_PROVEDOR === undefined ? 'demo' : process.env.PAGAMENTO_PROVEDOR).trim().toLowerCase().replace(/^off$/, ''),
@@ -20,6 +20,8 @@ const config = {
     token: process.env.WHATSAPP_TOKEN || '', phoneId: process.env.WHATSAPP_PHONE_ID || '',
     modelo: process.env.WHATSAPP_MODELO || 'status_pedido', idioma: process.env.WHATSAPP_IDIOMA || 'pt_BR', versao: process.env.WHATSAPP_API_VERSAO || 'v21.0'
   },
+  // Restaurante da página inicial (/) do site
+  siteRestaurante: (process.env.SITE_RESTAURANTE || 'sabor-da-casa').trim().toLowerCase(),
   suporteEmail: (process.env.SUPORTE_EMAIL || '').trim()
 };
 

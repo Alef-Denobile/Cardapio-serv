@@ -2,8 +2,9 @@
 
 Sistema de pedidos para vários restaurantes ao mesmo tempo: pedidos na **mesa** (QR Code), **retirada** e **delivery**, com a cozinha e o entregador recebendo tudo em **tempo real**.
 
-- **ChefOnline (página inicial, `seusite.com.br/`):** vitrine com todos os restaurantes. O cliente **não faz cadastro** para pedir na mesa, retirar ou pagar a entrega na porta. Só quem escolhe **pagar a entrega pelo site** entra com uma conta. Os pedidos ficam guardados no próprio aparelho, onde ele acompanha em tempo real e avalia depois da entrega.
-- **Cliente direto no restaurante:** `seusite.com.br/r/nome-do-restaurante` (delivery e retirada) ou o QR Code da mesa, sem precisar de conta.
+- **Site de cada restaurante:** `seusite.com.br/r/nome-do-restaurante`, com destaques em carrossel, categorias com foto, cardápio completo, avaliações, carrinho, entrega e retirada. A página inicial (`seusite.com.br/`) mostra o restaurante definido em `SITE_RESTAURANTE` (no exemplo, o **Sabor da Casa**).
+- **Mesa:** o QR Code abre `seusite.com.br/r/nome-do-restaurante/mesa/5?t=código`, o cardápio daquela mesa.
+- O cliente **não faz cadastro** para pedir na mesa, retirar ou pagar a entrega na porta. Só quem escolhe **pagar a entrega pelo site** entra com uma conta. Os pedidos ficam guardados no próprio aparelho, onde ele acompanha em tempo real e avalia depois da entrega.
 - **Restaurante:** `seusite.com.br/painel`, com login. Cada pessoa vê só o que a função dela permite:
   - **Dono:** pedidos, produtos, histórico e financeiro, mapa das mesas, mesas e QR Codes, equipe e configurações.
   - **Cozinha:** pedidos e "esgotar" produtos.
@@ -46,13 +47,15 @@ Segurança já incluída:
    ```
    O `seed` e o servidor criam e atualizam as tabelas sozinhos (pasta `src/db/migracoes`).
 5. Abra no navegador:
-   - Cardápio: http://localhost:3000/r/casa-jabuticaba
+   - Site do restaurante: http://localhost:3000/ (o mesmo que http://localhost:3000/r/sabor-da-casa)
    - Painel: http://localhost:3000/painel
 
-Logins do exemplo (senha `jabuticaba123`):
-- `dono@casajabuticaba.com`
-- `cozinha@casajabuticaba.com`
-- `carlos@casajabuticaba.com` e `rafa@casajabuticaba.com` (entregadores)
+O restaurante de exemplo é o **Sabor da Casa**: 20 pratos de categorias variadas (pizzas, hambúrgueres, mexicanos, sopas, sobremesas...), com fotos, opções e adicionais, 12 mesas e, com `npm run seed -- --com-historico`, 30 dias de pedidos e avaliações para mostrar os relatórios.
+
+Logins do exemplo (senha `sabordacasa123`):
+- `dono@sabordacasa.com`
+- `cozinha@sabordacasa.com`
+- `carlos@sabordacasa.com` e `rafa@sabordacasa.com` (entregadores)
 
 **Troque essas senhas antes de usar com clientes reais.**
 
@@ -121,12 +124,12 @@ O dono entra no painel e faz o resto: cadastra produtos, ajusta horário, bairro
 
 **CPF contra trote:** o servidor confere os dígitos do CPF (número possível ou não). Isso desencoraja o pedido falso, mas não prova que o CPF é da pessoa. No painel, o restaurante vê o CPF parcial (`***.982.247-**`). O número completo fica no banco e aparece só na área de devs, para um eventual boletim de ocorrência. O CPF não fica salvo no aparelho do cliente. Outras proteções para o futuro estão em `IDEIAS-ANTITROTE.md`.
 
-**Pagamento pelo site:** o pedido fica "aguardando pagamento" e só chega à cozinha depois de aprovado. Se não for pago em 30 minutos, é cancelado sozinho, sem cobrar nada. Hoje o pagamento funciona em **modo de demonstração** (`PAGAMENTO_PROVEDOR=demo`): uma tela com os botões "Simular pagamento aprovado" e "recusado", que não pede cartão. Quando escolherem a empresa (Mercado Pago, PagBank, Asaas...), ela entra em `src/lib/pagamentos.js`. O número do cartão nunca passa pelo nosso servidor: o cliente digita na página segura da empresa. O pagamento pelo site só aparece no ChefOnline, porque precisa de conta; o link próprio do restaurante (`/r/...`) oferece só o pagamento na entrega. Para desligar em um restaurante: `/admin` → Funções → "Pagamento pelo site". Para desligar em todos: `PAGAMENTO_PROVEDOR=off`.
+**Pagamento pelo site:** o pedido fica "aguardando pagamento" e só chega à cozinha depois de aprovado. Se não for pago em 30 minutos, é cancelado sozinho, sem cobrar nada. Hoje o pagamento funciona em **modo de demonstração** (`PAGAMENTO_PROVEDOR=demo`): uma tela com os botões "Simular pagamento aprovado" e "recusado", que não pede cartão. Quando escolherem a empresa (Mercado Pago, PagBank, Asaas...), ela entra em `src/lib/pagamentos.js`. O número do cartão nunca passa pelo nosso servidor: o cliente digita na página segura da empresa. O pagamento pelo site aparece no site do restaurante (entrega); o cardápio da mesa (QR Code) não usa. Para desligar em um restaurante: `/admin` → Funções → "Pagamento pelo site". Para desligar em todos: `PAGAMENTO_PROVEDOR=off`.
 
 ## Cliente sem cadastro
 
 - **Mesa:** o QR Code abre `/r/restaurante/mesa/5?t=código` direto no cardápio daquela mesa. Sem login.
-- **Link do restaurante e ChefOnline:** o cliente informa nome e WhatsApp (e CPF, se for entrega paga na porta) na hora de pedir. O aparelho lembra nome e WhatsApp para o próximo pedido.
+- **Site do restaurante:** o cliente informa nome e WhatsApp (e CPF, se for entrega paga na porta) na hora de pedir. O aparelho lembra nome e WhatsApp para o próximo pedido.
 - **Acompanhar:** cada pedido gera um código secreto que fica salvo no aparelho. É ele que libera o acompanhamento em tempo real e a avaliação, uma vez só, depois da entrega.
 - **Favoritos:** ficam salvos no próprio aparelho.
 - Se trocar de celular ou limpar o navegador, os pedidos antigos somem da lista (o restaurante continua vendo tudo no painel).
@@ -207,8 +210,9 @@ Para mudar a estrutura no futuro, crie um arquivo novo em `src/db/migracoes/` (p
 
 ## Endereços da API
 
-ChefOnline:
-- `GET /api/vitrine`: restaurantes, pratos e avaliações recentes.
+Site do restaurante:
+- `GET /api/site`: qual restaurante a página inicial mostra.
+- `GET /api/r/:slug`: dados do restaurante, cardápio e avaliações.
 - `POST /api/acompanhar` com `{ pedidos: [{ id, c }] }`: status dos pedidos guardados no aparelho.
 - `POST /api/acompanhar/:id/avaliacao` com `{ c, nota, comentario }`: avaliação depois da entrega.
 - `GET /api/pagamentos/config` e, no modo demo, `POST /api/pagamentos/demo/:id` com `{ c, resultado: "aprovar" | "recusar" }`.
@@ -245,4 +249,3 @@ Exigem login:
 - Endereços salvos na conta de cliente.
 - Mais proteções anti-trote: ver `IDEIAS-ANTITROTE.md`.
 - Aviso do status do pedido pelo WhatsApp do cliente.
-- Escolher opções e adicionais dos pratos dentro do ChefOnline (hoje vai a opção padrão; no link próprio do restaurante já dá para escolher).

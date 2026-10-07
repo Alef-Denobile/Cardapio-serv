@@ -1,4 +1,4 @@
-// Contas de cliente do ChefOnline: só para quem paga a entrega pelo site.
+// Contas de cliente: só para quem paga a entrega pelo site do restaurante.
 // Mesa, retirada e entrega paga na porta continuam sem cadastro.
 const express = require('express');
 const bcrypt = require('bcryptjs');

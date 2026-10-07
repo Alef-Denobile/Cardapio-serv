@@ -284,8 +284,8 @@ async function renderConfig(){
   const c = S.config, d = c.delivery;
   const inp = (id, lab, v, extra) => '<div><label for="' + id + '">' + lab + '</label><input id="' + id + '" value="' + esc(v) + '"' + (extra || '') + '></div>';
   $('#pane').innerHTML = '<form id="f-config" novalidate><h3>Identidade</h3><div class="card"><div class="grid2">' + inp('c-nome', 'Nome do restaurante', c.nome) + inp('c-frase', 'Frase curta', c.frase) +
-    '<div><label for="c-cor">Cor principal</label><input id="c-cor" type="color" value="' + esc(c.cor) + '"></div>' + inp('c-logo', 'Endereço do logo (opcional)', c.logoUrl, ' placeholder="https://…"') + inp('c-catv', 'Categoria no ChefOnline', c.categoriaVitrine, ' placeholder="Ex.: Pizza, Hambúrguer, Japonesa"') + inp('c-capa', 'Foto de capa (endereço)', c.capaUrl, ' placeholder="https://…"') + '</div>' +
-    '<label for="c-sobre">Sobre o restaurante (aparece no ChefOnline)</label><textarea id="c-sobre" rows="3" maxlength="400">' + esc(c.sobre || '') + '</textarea>' +
+    '<div><label for="c-cor">Cor principal</label><input id="c-cor" type="color" value="' + esc(c.cor) + '"></div>' + inp('c-logo', 'Endereço do logo (opcional)', c.logoUrl, ' placeholder="https://…"') + inp('c-capa', 'Foto de capa do site (endereço)', c.capaUrl, ' placeholder="https://…"') + '</div>' +
+    '<label for="c-sobre">Sobre o restaurante (aparece no site)</label><textarea id="c-sobre" rows="3" maxlength="400">' + esc(c.sobre || '') + '</textarea>' +
     '<p class="note">Endereço do cardápio: ' + esc(location.origin + '/r/' + c.slug) + '</p></div>' +
     '<h3>Funcionamento</h3><div class="card"><div class="grid2">' + inp('c-abre', 'Abre às', c.abre, ' type="time"') + inp('c-fecha', 'Fecha às', c.fecha, ' type="time"') + inp('c-serv', 'Taxa de serviço na mesa (%)', c.taxaServico, ' type="number" min="0" max="30"') + inp('c-whats', 'WhatsApp do restaurante', c.whatsapp, ' inputmode="tel"') + inp('c-pix', 'Chave Pix (aparece para o cliente pagar)', c.chavePix) + '</div>' +
     '<div class="checks"><label for="c-fora"><input type="checkbox" id="c-fora"' + (c.aceitarForaDoHorario ? ' checked' : '') + '> Aceitar pedidos fora do horário (use só para testes)</label></div>' +
@@ -298,7 +298,7 @@ async function renderConfig(){
 async function salvarConfig(e){
   e.preventDefault();
   const v = id => $('#' + id).value;
-  const corpo = { categoriaVitrine: v('c-catv'), capaUrl: v('c-capa'), sobre: v('c-sobre'), nome: v('c-nome'), frase: v('c-frase'), cor: v('c-cor'), logoUrl: v('c-logo'), abre: v('c-abre'), fecha: v('c-fecha'), taxaServico: v('c-serv'), whatsapp: v('c-whats'), chavePix: v('c-pix'),
+  const corpo = { capaUrl: v('c-capa'), sobre: v('c-sobre'), nome: v('c-nome'), frase: v('c-frase'), cor: v('c-cor'), logoUrl: v('c-logo'), abre: v('c-abre'), fecha: v('c-fecha'), taxaServico: v('c-serv'), whatsapp: v('c-whats'), chavePix: v('c-pix'),
     aceitarForaDoHorario: $('#c-fora').checked, categorias: v('c-cats').split('\n').map(s => s.trim()).filter(Boolean),
     delivery: { ativo: $('#c-dat').checked, tempo: v('c-tempo'), tempoRetirada: v('c-tret'), pedidoMinimo: v('c-min'), gratisAcimaDe: v('c-gratis'), bairros: escolhas(v('c-bairros'), /\n/).map(x => ({ nome: x.nome, taxa: x.preco })) } };
   try { S.config = (await chamar('PUT', '/api/painel/restaurante', corpo)).restaurante; S.rest.nome = S.config.nome; S.rest.cor = S.config.cor; S.rest.logoUrl = S.config.logoUrl; aplicarCor(S.config.cor); renderHead(); toast('Configurações salvas'); }

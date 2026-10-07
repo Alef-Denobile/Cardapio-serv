@@ -29,7 +29,6 @@ app.use('/api/auth', require('./routes/auth'));
 app.use('/api/painel', require('./routes/painel'));
 app.use('/api/painel', require('./routes/relatorios'));
 app.use('/api/admin', require('./routes/admin'));
-app.use('/api/vitrine', require('./routes/vitrine'));
 if (config.clienteContas) app.use('/api/clientes', require('./routes/clientes').router);
 app.use('/api/pagamentos', require('./routes/pagamentos').router);
 app.get('/api/suporte', (req, res) => res.json({ whatsapp: config.suporteWhatsapp, email: config.suporteEmail }));
@@ -38,7 +37,9 @@ app.use('/api', (req, res) => res.status(404).json({ erro: 'Endereço da API nã
 // Páginas
 const pub = path.join(__dirname, '..', 'public');
 app.use(express.static(pub, { extensions: ['html'], maxAge: config.producao ? '1h' : 0 }));
-app.get(['/r/:slug', '/r/:slug/mesa/:numero'], (req, res) => res.sendFile(path.join(pub, 'cardapio.html')));
+// Site do restaurante (cardápio, entrega e retirada) e, pelo QR Code, o pedido na mesa
+app.get('/r/:slug', (req, res) => res.sendFile(path.join(pub, 'index.html')));
+app.get('/r/:slug/mesa/:numero', (req, res) => res.sendFile(path.join(pub, 'cardapio.html')));
 app.get('/pagar/:id', (req, res) => { res.set('X-Robots-Tag', 'noindex'); res.sendFile(path.join(pub, 'pagar.html')); });
 app.get('/painel', (req, res) => res.sendFile(path.join(pub, 'painel.html')));
 app.get('/admin', (req, res) => { res.set('X-Robots-Tag', 'noindex, nofollow'); res.sendFile(path.join(pub, 'admin.html')); });

@@ -15,7 +15,7 @@ const DESC = {
   dinheiro: 'Pagamento em dinheiro na entrega, com troco.',
   online: 'Na entrega, o cliente pode pagar com cartão ou Pix pelo próprio site (exige conta de cliente). O pedido só chega à cozinha depois de pago.',
   whatsapp: 'O cliente recebe no WhatsApp: pedido recebido, pronto para retirar, saiu para entrega e cancelado. Cada mensagem tem custo para a plataforma (API oficial). O botão manual "WhatsApp do cliente" no painel funciona sempre, sem custo.',
-  vitrine: 'O restaurante aparece na vitrine do ChefOnline, junto com os outros. O link próprio e os QR Codes continuam funcionando.'
+
 };
 
 const S = { token: guardar.ler('admin:token', ''), eu: null, recursos: {}, aba: 'rest', lista: [], q: '', sel: null, sub: 'funcoes', det: null, produtos: [], cats: [], editId: null, formAberto: false, confirmar: null, novo: false };
@@ -35,7 +35,7 @@ $('#f-login').addEventListener('submit', async e => {
   b.disabled = false; b.textContent = 'Entrar';
 });
 function sair(msg){ guardar.apagar('admin:token'); S.token = ''; mostrarLogin(msg); }
-function entrar(){ $('#v-login').hidden = true; $('#v-app').hidden = false; aplicarCor('#3A3F8F'); render(); }
+function entrar(){ $('#v-login').hidden = true; $('#v-app').hidden = false; aplicarCor('#D23F3F'); render(); }
 
 /* ---------- estrutura ---------- */
 function render(){

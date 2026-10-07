@@ -5,6 +5,7 @@ const { doRestaurante, sistema } = require('../db');
 const repo = require('../lib/repo');
 const { montarPedido, metodosPermitidos, tiposPermitidos, PAGO_NO_SITE } = require('../lib/pedidos');
 const pagamentos = require('../lib/pagamentos');
+const config = require('../config');
 const { recursosDe } = require('../lib/recursos');
 const { ErroApp, rota, texto, numero, tokenAleatorio, iguais, estaAberto, uuidValido, pedidoParaCliente } = require('../lib/util');
 const rt = require('../realtime');
@@ -25,17 +26,35 @@ async function carregar(slug) {
 
 r.get('/r/:slug', rota(async (req, res) => {
   const rest = await carregar(req.params.slug);
-  const produtos = await doRestaurante(rest.id, c => repo.listarProdutos(c, rest.id));
+  const { produtos, aval } = await doRestaurante(rest.id, async c => ({
+    produtos: await repo.listarProdutos(c, rest.id),
+    aval: {
+      resumo: (await c.query('SELECT round(avg(nota)::numeric, 1) AS media, count(*)::int AS qtd FROM avaliacoes WHERE restaurante_id = $1', [rest.id])).rows[0],
+      recentes: (await c.query(`SELECT a.nota, a.comentario, a.criado_em, p.cliente_nome FROM avaliacoes a JOIN pedidos p ON p.id = a.pedido_id
+        WHERE a.restaurante_id = $1 AND length(a.comentario) >= 10 ORDER BY a.criado_em DESC LIMIT 10`, [rest.id])).rows
+    }
+  }));
   const cats = rest.categorias.length ? rest.categorias : [...new Set(produtos.map(p => p.categoria))];
+  const nomeCurto = n => { const p = String(n || 'Cliente').trim().split(/\s+/); return p[0] + (p[1] ? ' ' + p[1][0] + '.' : ''); };
   res.json({
     restaurante: {
       nome: rest.nome, slug: rest.slug, frase: rest.frase, cor: rest.cor, logoUrl: rest.logoUrl, abre: rest.abre, fecha: rest.fecha,
       aberto: estaAberto(rest), aceitarForaDoHorario: rest.aceitarForaDoHorario, taxaServico: rest.taxaServico, chavePix: rest.chavePix, whatsapp: rest.whatsapp,
-      delivery: rest.delivery, categorias: cats, recursos: recursosDe(rest), tipos: tiposPermitidos(rest),
+      delivery: rest.delivery, categorias: cats, recursos: recursosDe(rest), tipos: tiposPermitidos(rest), capaUrl: rest.capaUrl, sobre: rest.sobre,
+      avaliacoes: { media: aval.resumo.media, qtd: aval.resumo.qtd, recentes: aval.recentes.map(a => ({ nome: nomeCurto(a.cliente_nome), nota: a.nota, comentario: a.comentario, em: a.criado_em })) },
       pagamentos: { mesa: metodosPermitidos(rest, 'mesa'), retirada: metodosPermitidos(rest, 'retirada'), delivery: metodosPermitidos(rest, 'delivery') }
     },
     produtos: produtos.map(p => ({ id: p.id, categoria: p.categoria, nome: p.nome, descricao: p.descricao, preco: p.preco, selos: p.selos, opcoes: p.opcoes, fotoUrl: p.fotoUrl, esgotado: p.esgotado, destaque: p.destaque }))
   });
+}));
+
+// Restaurante mostrado na página inicial do site (SITE_RESTAURANTE; se não existir, o primeiro ativo)
+r.get('/site', rota(async (req, res) => {
+  const slug = await sistema(async c => {
+    const pref = (await c.query('SELECT slug FROM restaurantes WHERE slug = $1 AND ativo', [config.siteRestaurante])).rows[0];
+    return pref ? pref.slug : ((await c.query('SELECT slug FROM restaurantes WHERE ativo ORDER BY criado_em LIMIT 1')).rows[0] || {}).slug || null;
+  });
+  res.json({ slug });
 }));
 
 r.get('/r/:slug/mesa/:numero', rota(async (req, res) => {
@@ -79,7 +98,7 @@ r.get('/acompanhar/:id', rota(async (req, res) => {
   res.json({ pedido: pedidoParaCliente(p) });
 }));
 
-// Vários pedidos de uma vez: a lista que o ChefOnline guarda no aparelho do cliente (sem conta)
+// Vários pedidos de uma vez: a lista que o site do restaurante guarda no aparelho do cliente (sem conta)
 const limiteAcomp = rateLimit({ windowMs: 60 * 1000, limit: 60, standardHeaders: true, legacyHeaders: false, message: { erro: 'Muitas consultas seguidas. Aguarde um pouco.' } });
 r.post('/acompanhar', limiteAcomp, rota(async (req, res) => {
   const lista = (Array.isArray(req.body && req.body.pedidos) ? req.body.pedidos : []).slice(0, 20)

@@ -14,6 +14,7 @@ async function api(m, url, corpo){
 }
 const id = decodeURIComponent(location.pathname.split('/').pop()), c = new URLSearchParams(location.search).get('c') || '';
 let P = null, cfg = null;
+const loja = () => P && P.restaurante && P.restaurante.slug ? '/r/' + encodeURIComponent(P.restaurante.slug) : '/';
 
 function tela(){
   const app = $('#app');
@@ -23,8 +24,8 @@ function tela(){
   let corpo;
   if (P.status !== 'aguardando'){
     corpo = P.status === 'cancelado'
-      ? '<div class="alerta">O prazo para pagar este pedido acabou e ele foi cancelado. Nada foi cobrado.</div><a class="btn" href="/">Fazer o pedido de novo</a>'
-      : '<div class="ok-pag">Pagamento aprovado! O restaurante já recebeu o seu pedido.</div><a class="btn" href="/#pedidos">Acompanhar o pedido</a>';
+      ? '<div class="alerta">O prazo para pagar este pedido acabou e ele foi cancelado. Nada foi cobrado.</div><a class="btn" href="' + loja() + '">Fazer o pedido de novo</a>'
+      : '<div class="ok-pag">Pagamento aprovado! O restaurante já recebeu o seu pedido.</div><a class="btn" href="' + loja() + '#pedidos">Acompanhar o pedido</a>';
   } else if (cfg && cfg.provedor === 'demo'){
     corpo = (P.pagamento.online === 'recusado' ? '<div class="alerta">O pagamento não foi aprovado. Tente de novo.</div>' : '') +
       '<div class="demo"><strong>Ambiente de demonstração</strong><p>Nenhum cartão é pedido e nada é cobrado. Quando a empresa de pagamento for escolhida, este passo vira a página segura dela (cartão ou Pix).</p></div>' +
@@ -36,13 +37,14 @@ document.addEventListener('click', async e => {
   const b = e.target.closest('[data-r]'); if (!b) return;
   b.disabled = true;
   try { const d = await api('POST', '/api/pagamentos/demo/' + encodeURIComponent(id), { c, resultado: b.dataset.r }); P = Object.assign(P, d.pedido); tela();
-    if (P.status === 'novo') { toast('Pagamento aprovado'); setTimeout(() => { location.href = '/#pedidos'; }, 1800); } else toast('Pagamento recusado'); }
+    if (P.status === 'novo') { toast('Pagamento aprovado'); setTimeout(() => { location.href = loja() + '#pedidos'; }, 1800); } else toast('Pagamento recusado'); }
   catch (err) { toast(err.message); b.disabled = false; }
 });
 (async function(){
   try {
     const [d, k] = await Promise.all([api('POST', '/api/acompanhar', { pedidos: [{ id, c }] }), api('GET', '/api/pagamentos/config')]);
     P = d.pedidos[0] || null; cfg = k;
+    if (P){ $('#marca').textContent = P.restaurante.nome; $('#voltar-loja').href = loja(); document.title = 'Pagamento · ' + P.restaurante.nome; }
   } catch (e) { $('#app').innerHTML = '<div class="vazio-g"><strong>Não foi possível carregar</strong>' + esc(e.message) + '</div>'; return; }
   tela();
 })();

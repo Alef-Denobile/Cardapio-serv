@@ -293,3 +293,108 @@ footer .wrap{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap}
 .pag-box .btn{display:block;text-align:center;text-decoration:none;background:#fff;color:var(--red)}
 .pag-box .btn.sec{background:transparent;color:#fff;border:2px solid #fff}
 .pixped .btn{text-decoration:none;white-space:nowrap}
+
+/* site de um restaurante */
+.logo{max-width:min(420px,40vw);align-items:center;gap:10px}
+.logo b{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:clamp(20px,2.2vw,26px)}
+.marca-logo{display:grid;place-items:center;width:40px;height:40px;border-radius:50%;background:rgb(255 255 255 / .16);flex:none;overflow:hidden}
+.marca-logo svg{width:26px;height:26px;margin:0}
+.marca-logo img{width:100%;height:100%;object-fit:cover}
+@media (max-width:760px){.logo{max-width:none;flex:1}}
+.sr{position:absolute!important;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+.rinfo-box{background:var(--surface);border-radius:12px;box-shadow:var(--shadow);padding:22px 24px;display:grid;gap:4px}
+.rinfo .frase{margin:4px 0 0;color:var(--muted);font-size:17px}
+.nota-box .estrelas svg{width:24px;height:24px}
+.meta.aberto svg{color:var(--good)}
+.meta.fechado{color:var(--red)}
+.cat-tag{font:700 13px var(--body);color:var(--muted);background:var(--soft);padding:3px 9px;border-radius:999px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.esg{position:absolute;right:12px;top:12px;background:#0E0E10;color:#fff;font:800 12px var(--body);padding:5px 10px;border-radius:999px;text-transform:uppercase}
+.esg-t{font:800 13px var(--body);color:var(--muted);text-transform:uppercase}
+.card .rest{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.selos{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}
+.selos span{font:700 12px var(--body);color:var(--good);background:var(--good-bg);padding:2px 8px;border-radius:999px}
+.op-tag{font-size:13.5px!important;color:var(--red)!important;font-weight:700}
+.preco small{font:700 12px var(--body);color:var(--muted)}
+.item.pisca{animation:pisca 1.6s ease}
+@keyframes pisca{0%,60%{background:color-mix(in srgb,var(--red) 12%,transparent)}100%{background:transparent}}
+@media (prefers-reduced-motion:reduce){.item.pisca{animation:none}}
+.ordem{margin-left:auto}
+.ordem select{padding:8px 12px}
+.sobre-box{background:var(--surface);border-radius:12px;box-shadow:var(--shadow);padding:26px;display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,1fr);gap:28px;align-items:start}
+.sobre-box h2{font:800 24px var(--display);margin-bottom:8px}
+.sobre-box p{margin:0 0 8px;color:var(--muted)}
+.sobre-dados p{color:var(--ink)}
+.sobre-dados .btn{margin-top:8px}
+@media (max-width:760px){.sobre-box{grid-template-columns:1fr}}
+.resumo select{width:100%;background:rgb(255 255 255 / .95);color:#1D2142;border:0}
+.resumo .dica{font-size:12.5px;opacity:.9;margin:2px 0 0;text-align:left}
+.resumo .conta{background:rgb(255 255 255 / .16);border-radius:8px;padding:10px 12px;font-size:14px;display:flex;justify-content:space-between;gap:8px;align-items:center;flex-wrap:wrap}
+.resumo .conta button{background:none;border:0;color:#fff;text-decoration:underline;font:700 13px var(--body);padding:0}
+/* escolha de opções do prato */
+.opcoes{max-height:calc(100vh - 32px);overflow:auto;width:min(480px,100%)}
+.op-foto{width:calc(100% + 48px);margin:-24px -24px 4px;height:180px;object-fit:cover;border-radius:12px 12px 0 0}
+.opcoes fieldset{border:0;border-top:1px solid var(--line);margin:0;padding:12px 0 0;display:grid;gap:4px}
+.opcoes legend{font:800 16px var(--display);padding:0 0 4px}
+.opcoes legend small{font:600 13px var(--body);color:var(--muted);margin-left:6px}
+.op{display:grid;grid-template-columns:auto 1fr auto;gap:10px;align-items:center;padding:8px 6px;border-radius:8px;cursor:pointer;font-weight:600}
+.op:hover{background:var(--soft)}
+.op b{color:var(--red);font-weight:800;font-variant-numeric:tabular-nums}
+.logo-login{text-align:center;font:900 30px/1.1 var(--display);margin-bottom:6px}
+.ph{background:linear-gradient(135deg,var(--red),var(--red-deep));color:#fff}
+.card .rest{max-height:3em;line-height:1.5}
+.item .th{background:var(--soft)}
+/* página do prato */
+.prod-voltar{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:-16px}
+.prod-voltar svg{width:16px;height:16px}
+.prod{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,1fr);gap:32px;align-items:start;background:var(--surface);border-radius:16px;box-shadow:var(--shadow);padding:24px}
+.prod-foto .pf{width:100%;aspect-ratio:4/3;object-fit:cover;border-radius:12px;display:grid;font-size:72px}
+.prod-info{display:grid;gap:10px;align-content:start}
+.prod-info .cat-tag{justify-self:start}
+.prod-info h1{font:900 clamp(28px,3vw,38px)/1.15 var(--display)}
+.prod-info .desc{margin:0;color:var(--muted);font-size:17px}
+.prod-info fieldset{border:0;border-top:1px solid var(--line);margin:0;padding:12px 0 0;display:grid;gap:2px}
+.prod-info legend{font:800 16px var(--display);padding:0 0 4px}
+.prod-info legend small{font:600 13px var(--body);color:var(--muted);margin-left:6px}
+.prod-acao{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-top:8px}
+.prod-add{flex:1;min-width:200px;font-size:17px;padding:13px 18px}
+@media (max-width:800px){.prod{grid-template-columns:1fr;padding:16px;gap:18px}}
+.item-ver,.link-ver{border:0;background:transparent;padding:0;color:inherit;font:inherit;text-align:left;cursor:pointer}
+.link-ver:hover{color:var(--red)}
+.item-ver .th{display:grid}
+.card .img.ph,.item .th.ph,.prod-foto .pf.ph,.cat .ci .ph{background:linear-gradient(135deg,var(--red),var(--red-deep));color:#fff;display:grid;place-items:center;font:900 44px var(--display)}
+.prod-foto .pf.ph{font-size:96px}
+.item .th.ph{font-size:30px}
+/* cardápio sem o resumo ao lado; o pedido fecha no carrinho */
+.cardapio{max-width:960px}
+.add-btn{display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
+.add-btn svg{width:16px;height:16px}
+.no-carr{color:var(--good);font-weight:800;font-size:12.5px}
+.adicionado{display:flex;align-items:center;gap:12px;flex-wrap:wrap;background:var(--good-bg);color:var(--good);border-radius:12px;padding:14px 18px;font-size:16px;margin-bottom:-12px;animation:entra .35s ease}
+.adicionado svg{width:22px;height:22px;flex:none}
+.adicionado span{flex:1;color:var(--ink)}
+.adicionado .chip{border-color:var(--good);color:var(--good);background:transparent}
+@keyframes entra{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:none}}
+@media (prefers-reduced-motion:reduce){.adicionado{animation:none}}
+.mais{margin-top:28px}
+.grid-r.mini{grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:14px}
+.grid-r.mini .card h3{font-size:16.5px}
+.grid-r.mini .card .rest{font-size:14px}
+/* página do prato: só escolhe e coloca no carrinho (o pedido fecha no carrinho) */
+.prod-preco{margin:2px 0 0;color:var(--red);font:900 24px var(--body);font-variant-numeric:tabular-nums}
+.prod-qtd{display:flex;align-items:center;gap:14px;flex-wrap:wrap;border-top:1px solid var(--line);padding-top:14px;margin-top:4px}
+.prod-qtd>span{font:800 15px var(--body)}
+.prod-qtd strong{margin-left:auto;font:900 22px var(--body);font-variant-numeric:tabular-nums}
+.prod-acao{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.prod-acao .btn{display:flex;align-items:center;justify-content:center;gap:8px;font-size:17px;padding:14px 16px}
+.prod-acao .btn svg.carr{width:20px;height:20px;margin:0}
+.prod-pagar{background:#0E0E10}
+.prod-pagar:hover{background:#2A2A2E}
+@media (max-width:420px){.prod-acao{grid-template-columns:1fr}}
+.toast.com-link{display:flex;align-items:center;gap:14px;flex-wrap:wrap;justify-content:center}
+.toast-link{border:0;background:transparent;color:var(--gold);font:900 15px var(--body);text-decoration:underline;text-underline-offset:3px;text-decoration-thickness:2px;padding:2px 0;cursor:pointer}
+.toast-link:hover{color:#fff}
+.toast-link.inline{color:var(--red);font-size:inherit}
+.no-carr .toast-link.inline{font-size:12.5px}
+.prod-acao{grid-template-columns:minmax(0,1.6fr) minmax(0,1fr)}
+.prod-acao .btn{white-space:nowrap;font-size:16px}
+@media (max-width:420px){.prod-acao{grid-template-columns:1fr}}
