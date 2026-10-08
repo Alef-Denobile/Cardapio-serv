@@ -140,7 +140,8 @@ O dono entra no painel e faz o resto: cadastra produtos, ajusta horário, bairro
 
 ## Os três sites
 
-- **Pedido online (de casa):** `/r/<restaurante>` (e a página inicial `/`). Tem início, cardápio, carrinho e acompanhamento, para entrega ou retirada.
+- **Entrada do site (`/`):** o cliente escolhe entre "Pedir em casa" e "Estou no restaurante" (menu do salão). Os links diretos abaixo pulam essa tela.
+- **Pedido online (de casa):** `/r/<restaurante>`. Tem início, cardápio, carrinho e acompanhamento, para entrega ou retirada.
 - **Cardápio do salão (no restaurante):** `/r/<restaurante>/mesa/<n>?t=<código>` pelo QR de cada mesa. Mostra só o cardápio, com barra lateral de categorias, e o carrinho, sem tela de início. O cliente pede, acompanha o pedido em tempo real, chama o garçom e pede a conta. Em `/r/<restaurante>/salao` fica só o cardápio para ver (QR da entrada, do balcão ou da vitrine).
 - **Painel do restaurante (equipe):** `/painel`, com pedidos, produtos, estoque, histórico e financeiro.
 

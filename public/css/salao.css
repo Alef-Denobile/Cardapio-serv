@@ -43,23 +43,27 @@ button:disabled{ cursor:default; }
 .sl-ci{ width:40px; height:40px; border-radius:50%; object-fit:cover; flex:0 0 auto; font-size:16px; }
 .sl-prods{ padding:18px 24px 120px; min-width:0; }
 .sl-carregando,.sl-vazio{ color:var(--suave); padding:30px 0; text-align:center; }
-.sl-sec{ margin-bottom:26px; }
-.sl-sec h2{ font-size:22px; margin:0 0 12px; }
-.sl-lista{ display:grid; grid-template-columns:repeat(auto-fill, minmax(320px, 1fr)); gap:14px; }
-.sl-item{ position:relative; background:var(--papel); border-radius:14px; box-shadow:var(--sombra); }
+.sl-sec{ max-width:980px; }
+.sl-sec h2{ font-size:26px; margin:2px 0 14px; display:flex; align-items:baseline; gap:10px; }
+.sl-sec h2 small{ font-size:14px; color:var(--suave); font-weight:700; }
+.sl-lista{ display:flex; flex-direction:column; gap:14px; }
+.sl-item{ display:grid; grid-template-columns:minmax(0,1fr) auto; align-items:center; gap:16px; background:var(--papel); border-radius:16px; box-shadow:var(--sombra); padding:14px 18px 14px 14px; }
 .sl-item.off{ opacity:.55; }
-.sl-ver{ width:100%; display:grid; grid-template-columns:minmax(0,1fr) 112px; gap:12px; align-items:start; border:0; background:transparent; text-align:left; padding:12px; border-radius:14px; }
-.sl-txt{ display:flex; flex-direction:column; gap:3px; min-width:0; }
-.sl-txt strong{ font-size:16.5px; line-height:1.2; }
-.sl-txt small{ color:var(--suave); font-size:13.5px; line-height:1.35; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
-.sl-txt b{ margin-top:4px; font-size:16px; }
-.sl-txt em{ font-style:normal; font-weight:600; font-size:12px; color:var(--suave); }
+.sl-ver{ display:grid; grid-template-columns:150px minmax(0,1fr); gap:18px; align-items:center; border:0; background:transparent; text-align:left; padding:0; border-radius:12px; min-width:0; }
+.sl-foto{ width:150px; height:120px; border-radius:12px; object-fit:cover; font-size:38px; }
+.sl-txt{ display:flex; flex-direction:column; gap:5px; min-width:0; }
+.sl-txt strong{ font-size:20px; line-height:1.2; }
+.sl-txt small{ color:var(--suave); font-size:15px; line-height:1.4; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
 .sl-selos{ display:flex; flex-wrap:wrap; gap:4px; }
-.sl-selos i{ font-style:normal; font-size:11px; font-weight:800; color:var(--ok); background:var(--ok-bg); border-radius:999px; padding:1px 7px; }
-.sl-foto{ width:112px; height:96px; border-radius:10px; object-fit:cover; font-size:30px; }
-.sl-mais{ position:absolute; right:6px; bottom:6px; width:38px; height:38px; border-radius:50%; border:3px solid var(--papel); background:var(--cor); color:#fff; font-size:24px; font-weight:800; line-height:1; display:grid; place-items:center; box-shadow:0 3px 8px rgb(0 0 0 / .2); }
-.sl-n{ position:absolute; top:-8px; right:-8px; min-width:22px; height:22px; padding:0 5px; border-radius:999px; background:var(--ouro); color:#3B2A00; font-size:12px; font-weight:900; display:grid; place-items:center; }
-.sl-esg{ position:absolute; right:12px; bottom:12px; background:var(--tinta); color:var(--papel); font-size:12px; font-weight:800; border-radius:999px; padding:3px 9px; }
+.sl-selos i{ font-style:normal; font-size:12px; font-weight:800; color:var(--ok); background:var(--ok-bg); border-radius:999px; padding:1px 8px; }
+.sl-lado{ display:flex; flex-direction:column; align-items:flex-end; gap:10px; }
+.sl-lado b{ font-size:21px; white-space:nowrap; display:flex; flex-direction:column; align-items:flex-end; line-height:1.1; }
+.sl-lado em{ font-style:normal; font-weight:600; font-size:12px; color:var(--suave); }
+.sl-mais{ position:relative; display:flex; align-items:center; gap:8px; min-height:52px; padding:0 22px; border:0; border-radius:14px; background:var(--cor); color:#fff; font-size:17px; font-weight:900; white-space:nowrap; box-shadow:0 4px 12px color-mix(in srgb, var(--cor) 35%, transparent); }
+.sl-mais > span:first-child{ font-size:26px; line-height:1; }
+.sl-mais:hover{ background:color-mix(in srgb, var(--cor) 85%, #000); }
+.sl-n{ position:absolute; top:-9px; right:-9px; min-width:26px; height:26px; padding:0 6px; border-radius:999px; background:var(--ouro); color:#3B2A00; font-size:13px; font-weight:900; display:grid; place-items:center; border:2px solid var(--papel); }
+.sl-esg{ background:var(--tinta); color:var(--papel); font-size:13px; font-weight:800; border-radius:999px; padding:6px 12px; }
 
 /* pedido */
 .sl-carr{ position:fixed; z-index:40; top:0; right:0; bottom:0; width:min(420px, 100%); overflow-y:auto; background:var(--papel); padding:16px 18px 30px; transform:translateX(100%); visibility:hidden; transition:transform .25s, visibility .25s; box-shadow:-10px 0 30px rgb(0 0 0 / .2); }
@@ -157,16 +161,23 @@ body.carr-aberto .sl-carr{ transform:none; visibility:visible; }
   .sl-marca{ flex:1; }
   .sl-busca{ order:3; flex:1 0 100%; max-width:none; margin:0; height:38px; }
   .sl-bt{ padding:7px 10px; }
-  .sl-bt span{ display:none; }
+  .sl-bt span:not(.sl-cn){ display:none; }
   .sl-bt svg{ width:20px; height:20px; }
   .sl-corpo{ grid-template-columns:84px minmax(0,1fr); }
   .sl-cats{ padding:8px 4px 90px; }
   .sl-cats button{ flex-direction:column; text-align:center; gap:4px; padding:8px 2px; font-size:11.5px; }
   .sl-ci{ width:44px; height:44px; }
   .sl-prods{ padding:12px 10px 110px; }
-  .sl-sec h2{ font-size:18px; }
-  .sl-lista{ grid-template-columns:minmax(0,1fr); gap:10px; }
-  .sl-ver{ grid-template-columns:minmax(0,1fr) 88px; padding:10px; gap:10px; }
-  .sl-foto{ width:88px; height:80px; }
-  .sl-txt strong{ font-size:15px; }
+  .sl-sec h2{ font-size:21px; }
+  .sl-item{ grid-template-columns:1fr; gap:10px; padding:12px; }
+  .sl-ver{ grid-template-columns:96px minmax(0,1fr); gap:12px; }
+  .sl-foto{ width:96px; height:88px; font-size:28px; }
+  .sl-txt strong{ font-size:17px; }
+  .sl-txt small{ font-size:13.5px; }
+  .sl-lado{ flex-direction:row; justify-content:space-between; align-items:center; }
+  .sl-lado b{ align-items:flex-start; font-size:19px; }
+  .sl-mais{ min-height:50px; padding:0 18px; font-size:16px; }
 }
+}
+.sl-marca > div{ min-width:0; }
+.sl-marca span{ display:block; overflow:hidden; text-overflow:ellipsis; }

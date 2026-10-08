@@ -42,6 +42,8 @@ app.use('/vendor/leaflet', express.static(path.join(path.dirname(require.resolve
 
 // Páginas
 const pub = path.join(__dirname, '..', 'public');
+// Entrada do site: escolher entre pedir em casa e o menu do salão
+app.get('/', (req, res) => res.sendFile(path.join(pub, 'inicio.html')));
 app.use(express.static(pub, { extensions: ['html'], maxAge: config.producao ? '1h' : 0 }));
 // Site do restaurante (cardápio, entrega e retirada) e, pelo QR Code, o pedido na mesa
 app.get('/r/:slug', (req, res) => res.sendFile(path.join(pub, 'index.html')));

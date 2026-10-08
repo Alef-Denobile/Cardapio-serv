@@ -66,28 +66,27 @@ function renderCats(){
 }
 function itemHtml(p){
   const n = qtd(p.id), extra = (p.opcoes || []).some(o => o.escolhas.some(e => e.preco));
-  return '<article class="sl-item' + (p.esgotado ? ' off' : '') + '"><button class="sl-ver" data-ver="' + p.id + '"' + (p.esgotado ? ' disabled' : '') + '><span class="sl-txt"><strong>' + esc(p.nome) + '</strong><small>' + esc(p.descricao) + '</small>' +
-    ((p.selos || []).length ? '<span class="sl-selos">' + p.selos.map(s => '<i>' + esc(s) + '</i>').join('') + '</span>' : '') +
-    '<b>' + (extra ? '<em>a partir de</em> ' : '') + brl(p.preco) + '</b></span>' + foto(p, 'sl-foto') + '</button>' +
-    (p.esgotado ? '<span class="sl-esg">Esgotado</span>' : S.mesaOk ? '<button class="sl-mais" data-add="' + p.id + '" aria-label="Adicionar ' + esc(p.nome) + '">+' + (n ? '<span class="sl-n">' + n + '</span>' : '') + '</button>' : '') + '</article>';
+  return '<article class="sl-item' + (p.esgotado ? ' off' : '') + '"><button class="sl-ver" data-ver="' + p.id + '"' + (p.esgotado ? ' disabled' : '') + '>' + foto(p, 'sl-foto') +
+    '<span class="sl-txt"><strong>' + esc(p.nome) + '</strong><small>' + esc(p.descricao) + '</small>' +
+    ((p.selos || []).length ? '<span class="sl-selos">' + p.selos.map(s => '<i>' + esc(s) + '</i>').join('') + '</span>' : '') + '</span></button>' +
+    '<div class="sl-lado"><b>' + (extra ? '<em>a partir de</em>' : '') + brl(p.preco) + '</b>' +
+    (p.esgotado ? '<span class="sl-esg">Esgotado</span>' : S.mesaOk ? '<button class="sl-mais" data-add="' + p.id + '" aria-label="Adicionar ' + esc(p.nome) + '"><span aria-hidden="true">+</span> Adicionar' + (n ? '<span class="sl-n">' + n + '</span>' : '') + '</button>' : '') + '</div></article>';
 }
+// Mostra só a categoria escolhida na barra lateral; com busca, mostra os resultados de todas
 function renderProds(){
   const q = norm(S.q), cs = cats();
-  const match = p => !q || norm(p.nome + ' ' + p.descricao + ' ' + p.categoria).includes(q);
-  const grupos = cs.map((c, i) => ({ c, i, l: P.filter(p => p.categoria === c && match(p)) })).filter(g => g.l.length);
-  $('#prods').innerHTML = grupos.length ? grupos.map(g => '<section class="sl-sec" id="cat-' + g.i + '" data-i="' + g.i + '"><h2>' + esc(g.c) + '</h2><div class="sl-lista">' + g.l.map(itemHtml).join('') + '</div></section>').join('')
-    : '<p class="sl-vazio">Nada encontrado para “' + esc(S.q) + '”.</p>';
-  observarSecoes();
-}
-// marca na barra lateral a categoria que está na tela
-let obs;
-function observarSecoes(){
-  if (obs) obs.disconnect(); if (!('IntersectionObserver' in window)) return;
-  obs = new IntersectionObserver(es => { const v = es.filter(e => e.isIntersecting).sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top)[0]; if (!v || S.rolando) return; marcarCat(+v.target.dataset.i); }, { rootMargin: '-120px 0px -55% 0px' });
-  $$('.sl-sec').forEach(s => obs.observe(s));
+  if (S.cat == null || S.cat >= cs.length) S.cat = 0;
+  if (q) {
+    const l = P.filter(p => norm(p.nome + ' ' + p.descricao + ' ' + p.categoria).includes(q));
+    $('#prods').innerHTML = '<section class="sl-sec"><h2>Resultados para “' + esc(S.q) + '” <small>' + l.length + (l.length === 1 ? ' item' : ' itens') + '</small></h2>' +
+      (l.length ? '<div class="sl-lista">' + l.map(itemHtml).join('') + '</div>' : '<p class="sl-vazio">Nada encontrado. Tente outra palavra.</p>') + '</section>';
+    return;
+  }
+  const c = cs[S.cat], l = P.filter(p => p.categoria === c);
+  $('#prods').innerHTML = '<section class="sl-sec"><h2>' + esc(c) + ' <small>' + l.length + (l.length === 1 ? ' item' : ' itens') + '</small></h2><div class="sl-lista">' + l.map(itemHtml).join('') + '</div></section>';
 }
 function marcarCat(i){
-  S.cat = i; $$('#cats button').forEach(b => b.setAttribute('aria-current', String(+b.dataset.cat === i)));
+  S.cat = i; $$('#cats button').forEach(b => b.setAttribute('aria-current', String(!S.q && +b.dataset.cat === i)));
   const b = $('#cats button[data-cat="' + i + '"]'); if (b) b.scrollIntoView({ block: 'nearest', inline: 'nearest' });
 }
 
@@ -217,7 +216,7 @@ document.addEventListener('click', e => {
   const el = e.target.closest('button, [data-act]'); if (!el) return;
   const d = el.dataset;
   if (d.act === 'fechar-modal'){ if (el.classList.contains('sl-veu') && e.target !== el) return; fecharModal(); return; }
-  if (d.cat !== undefined){ const s = $('#cat-' + d.cat); marcarCat(+d.cat); if (s){ S.rolando = true; s.scrollIntoView({ behavior: 'smooth', block: 'start' }); setTimeout(() => { S.rolando = false; }, 700); } return; }
+  if (d.cat !== undefined){ if (S.q){ S.q = ''; const bu = $('#busca'); if (bu) bu.value = ''; } marcarCat(+d.cat); renderProds(); window.scrollTo(0, 0); return; }
   if (d.ver){ abrirItem(d.ver); return; }
   if (d.add){ adicionar(d.add); return; }
   if (d.linha){ const l = S.cart.find(x => x.k === d.linha); if (!l) return; l.q += +d.d; if (l.q <= 0) S.cart = S.cart.filter(x => x !== l); salvar(); atualizarItens(); return; }
@@ -239,7 +238,7 @@ document.addEventListener('click', e => {
 });
 document.addEventListener('input', e => {
   const t = e.target;
-  if (t.id === 'busca'){ S.q = t.value; renderProds(); return; }
+  if (t.id === 'busca'){ S.q = t.value; renderProds(); marcarCat(S.cat); return; }
   if (t.id === 'sl-nome'){ S.nome = t.value; salvar(); return; }
   if (t.id === 'sl-obs'){ S.obs = t.value; }
 });
