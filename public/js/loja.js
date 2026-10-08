@@ -2,6 +2,7 @@
    Abre em /r/<endereço-do-restaurante> e, na página inicial (/), mostra o restaurante principal do site. */
 (function(){
 'use strict';
+const N = n => String(n == null ? '' : n).padStart(3, '0'); // número do pedido do dia: 001, 002…
 const $ = s => document.querySelector(s), $$ = s => Array.from(document.querySelectorAll(s));
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const brl = v => (+v || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
@@ -249,13 +250,15 @@ const ORDEM = ['novo', 'preparo', 'pronto', 'rota', 'entregue'];
 function etapas(p){ return p.tipo === 'delivery' ? [['novo', 'Recebido'], ['preparo', 'Preparando'], ['rota', 'A caminho'], ['entregue', 'Entregue']] : [['novo', 'Recebido'], ['preparo', 'Preparando'], ['pronto', 'Pronto para retirar'], ['entregue', 'Retirado']]; }
 const STATUS_TXT = { aguardando: 'Aguardando pagamento', novo: 'Recebido', preparo: 'Preparando', pronto: 'Pronto', rota: 'A caminho', entregue: 'Entregue', cancelado: 'Cancelado' };
 function telaPedidos(){
-  const meus = S.pedidos.filter(p => p.restaurante && p.restaurante.slug === SLUG);
+  // o cliente vê só os pedidos de hoje; o histórico completo fica no painel do restaurante
+  const hoje = new Date().toDateString();
+  const meus = S.pedidos.filter(p => p.restaurante && p.restaurante.slug === SLUG && new Date(p.criadoEm).toDateString() === hoje);
   if (S.meus.length && !S.pedidosCarregados) return '<p class="carregando">Carregando seus pedidos…</p>';
-  if (!meus.length) return '<section><div class="sec-h"><h2>Pedidos</h2></div><div class="vazio-g"><strong>Nenhum pedido neste aparelho</strong>Quando pedir, você acompanha cada etapa por aqui, em tempo real. Não precisa de cadastro.<div style="margin-top:14px"><button class="btn" data-go="cardapio">Ver o cardápio</button></div></div></section>';
-  return '<section><div class="sec-h"><h2>Pedidos</h2><span class="nota">Feitos neste aparelho · atualiza sozinho quando o restaurante muda a etapa</span></div><div class="lista-ped">' + meus.map(p => {
+  if (!meus.length) return '<section><div class="sec-h"><h2>Pedidos</h2></div><div class="vazio-g"><strong>Nenhum pedido hoje neste aparelho</strong>Quando pedir, você acompanha cada etapa por aqui, em tempo real. Não precisa de cadastro.<div style="margin-top:14px"><button class="btn" data-go="cardapio">Ver o cardápio</button></div></div></section>';
+  return '<section><div class="sec-h"><h2>Pedidos</h2><span class="nota">Pedidos de hoje feitos neste aparelho · atualiza sozinho quando o restaurante muda a etapa</span></div><div class="lista-ped">' + meus.map(p => {
     const cur = ORDEM.indexOf(p.status), canc = p.status === 'cancelado', m = S.meus.find(x => x.id === p.id), nota = S.aval[p.id] || 0;
     const pix = p.pagamento.metodo === 'pix' && !p.pagamento.pago && !canc;
-    return '<article class="ped"><div class="ped-h"><div><h3>Pedido #' + p.numero + '</h3><small>' + new Date(p.criadoEm).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) + ' · ' + p.linhas.map(x => x.qtd + '× ' + esc(x.nome)).join(', ') + '</small></div>' +
+    return '<article class="ped"><div class="ped-h"><div><h3>Pedido #' + N(p.numero) + '</h3><small>' + new Date(p.criadoEm).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) + ' · ' + p.linhas.map(x => x.qtd + '× ' + esc(x.nome)).join(', ') + '</small></div>' +
       '<div style="display:flex;gap:10px;align-items:center"><span class="badge' + (p.status === 'entregue' ? ' ok' : '') + '">' + STATUS_TXT[p.status] + '</span><strong class="preco">' + brl(p.total) + '</strong></div></div>' +
       (p.agendadoPara && !canc && p.status !== 'entregue' ? '<p class="agendado">' + ICO.relogio + 'Agendado para ' + esc(quandoTxt(p.agendadoPara)) + '</p>' : '') +
       (p.status === 'aguardando' ? '<div class="pixped"><span>' + (p.pagamento.online === 'recusado' ? 'O pagamento não foi aprovado. Tente de novo ou use outro cartão.' : 'Falta pagar para o restaurante receber o pedido.') + '</span>' + (m ? '<a class="btn" href="/pagar/' + esc(p.id) + '?c=' + encodeURIComponent(m.c) + '">Pagar agora</a>' : '') + '</div>' :
@@ -387,7 +390,7 @@ async function pedir(){
     S.cart = []; C.troco = ''; C.obs = ''; salvar();
     if (d.pagamento && d.pagamento.url){ location.href = d.pagamento.url; return; }
     conectarTempoReal();
-    toast('Pedido #' + d.pedido.numero + (d.pedido.agendadoPara ? ' agendado para ' + quandoTxt(d.pedido.agendadoPara) : ' enviado!'));
+    toast('Pedido #' + N(d.pedido.numero) + (d.pedido.agendadoPara ? ' agendado para ' + quandoTxt(d.pedido.agendadoPara) : ' enviado!'));
     ir('pedidos');
   } catch (e) {
     toast(e.message); render();
@@ -410,7 +413,7 @@ function conectarTempoReal(){
   S.socket = io({ auth: { pedidos: S.meus.slice(0, 20).map(x => ({ id: x.id, c: x.c })) } });
   S.socket.on('pedido:atualizado', p => {
     const i = S.pedidos.findIndex(x => x.id === p.id);
-    if (i >= 0){ const antes = S.pedidos[i].status; S.pedidos[i] = Object.assign({}, S.pedidos[i], p, { restaurante: S.pedidos[i].restaurante, avaliacao: S.pedidos[i].avaliacao }); if (antes !== p.status) toast('Pedido #' + p.numero + ': ' + STATUS_TXT[p.status].toLowerCase()); }
+    if (i >= 0){ const antes = S.pedidos[i].status; S.pedidos[i] = Object.assign({}, S.pedidos[i], p, { restaurante: S.pedidos[i].restaurante, avaliacao: S.pedidos[i].avaliacao }); if (antes !== p.status) toast('Pedido #' + N(p.numero) + ': ' + STATUS_TXT[p.status].toLowerCase()); }
     else carregarPedidos();
     if (S.rota === 'pedidos') render();
   });

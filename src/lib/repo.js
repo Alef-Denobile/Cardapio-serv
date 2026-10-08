@@ -119,15 +119,18 @@ async function buscarPedido(c, rid, id) {
   return r[0] ? { row: r[0], obj: (await completarPedidos(c, r))[0] } : null;
 }
 async function criarPedido(c, rid, d) {
-  const num = (await c.query('UPDATE restaurantes SET seq_pedido = seq_pedido + 1 WHERE id = $1 RETURNING seq_pedido', [rid])).rows[0].seq_pedido;
+  // número do dia: o primeiro pedido de cada dia (no fuso do restaurante) é o 1
+  const seq = (await c.query(`UPDATE restaurantes SET seq_pedido = CASE WHEN seq_dia = (now() AT TIME ZONE fuso)::date THEN seq_pedido + 1 ELSE 1 END,
+      seq_dia = (now() AT TIME ZONE fuso)::date WHERE id = $1 RETURNING seq_pedido, seq_dia::text AS seq_dia`, [rid])).rows[0];
+  const num = seq.seq_pedido;
   const e = d.entrega || {};
   const p = (await c.query(`INSERT INTO pedidos (restaurante_id, numero, tipo, mesa, cliente_nome, cliente_tel, entrega_endereco, entrega_complemento, entrega_referencia, entrega_bairro,
       obs, subtotal, servico, taxa_entrega, total, pag_metodo, pag_troco, codigo_acomp, cliente_id, cliente_cpf, status, pag_status,
-      agendado_para, entrega_lat, entrega_lng, entrega_km, origem, consumo)
-    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28) RETURNING *`,
+      agendado_para, entrega_lat, entrega_lng, entrega_km, origem, consumo, dia)
+    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29) RETURNING *`,
     [rid, num, d.tipo, d.mesa, d.cliente.nome, d.cliente.tel, d.entrega ? e.endereco : null, d.entrega ? e.complemento : null, d.entrega ? e.referencia : null, d.entrega ? e.bairro : null,
       d.obs, d.subtotal, d.servico, d.taxaEntrega, d.total, d.pagamento.metodo, d.pagamento.troco, d.codigoAcomp, d.clienteId || null, d.cliente.cpf || null, d.status || 'novo', d.pagamento.metodo === 'online' ? 'pendente' : null,
-      d.agendadoPara || null, d.entrega && e.lat != null ? e.lat : null, d.entrega && e.lng != null ? e.lng : null, d.entrega && e.km != null ? e.km : null, d.origem || (d.tipo === 'mesa' ? 'mesa' : 'site'), d.consumo || null])).rows[0];
+      d.agendadoPara || null, d.entrega && e.lat != null ? e.lat : null, d.entrega && e.lng != null ? e.lng : null, d.entrega && e.km != null ? e.km : null, d.origem || (d.tipo === 'mesa' ? 'mesa' : 'site'), d.consumo || null, seq.seq_dia])).rows[0];
   let i = 0;
   for (const l of d.linhas) await c.query('INSERT INTO pedido_itens (pedido_id, restaurante_id, produto_id, nome, qtd, unit, opcoes, ordem, custo) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)', [p.id, rid, l.produto, l.nome, l.qtd, l.unit, l.opcoes, i++, l.custo == null ? null : l.custo]);
   await c.query('INSERT INTO pedido_historico (pedido_id, restaurante_id, status, por) VALUES ($1,$2,$3,$4)', [p.id, rid, p.status, 'cliente']);

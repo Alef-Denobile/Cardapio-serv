@@ -1,7 +1,7 @@
 
 /* Layout: barra vermelha fixa no topo; vitrine em trilhos horizontais (carrosséis); página do restaurante em duas colunas com o pedido fixo à direita. */
 :root{
-  --red:#D23F3F; --red-deep:#A92F2F; --red-ink:#FFFFFF;
+  --red:#E30613; --red-deep:#B3000F; --red-ink:#FFFFFF;
   --ink:#1D2142; --muted:#7A7C8C; --line:#ECE6E6;
   --bg:#FBF7F6; --surface:#FFFFFF; --soft:#F6EEEE;
   --gold:#F2B42C; --gold-ink:#3B2A00; --star-off:#D9D6DC;
@@ -14,14 +14,14 @@
 @media (prefers-color-scheme: dark){
   :root:not([data-theme="light"]){
     color-scheme:dark;
-    --red:#D9443F; --red-deep:#B4302D; --ink:#F2EEF3; --muted:#A8A3B0; --line:#2E2A33;
+    --red:#EE1C2E; --red-deep:#C00715; --ink:#F2EEF3; --muted:#A8A3B0; --line:#2E2A33;
     --bg:#131116; --surface:#1D1A21; --soft:#28222A; --star-off:#4A4550; --good:#6FD39A; --good-bg:#1C3326;
     --shadow:0 2px 12px rgb(0 0 0 / .35);
   }
 }
 :root[data-theme="dark"]{
   color-scheme:dark;
-  --red:#D9443F; --red-deep:#B4302D; --ink:#F2EEF3; --muted:#A8A3B0; --line:#2E2A33;
+  --red:#EE1C2E; --red-deep:#C00715; --ink:#F2EEF3; --muted:#A8A3B0; --line:#2E2A33;
   --bg:#131116; --surface:#1D1A21; --soft:#28222A; --star-off:#4A4550; --good:#6FD39A; --good-bg:#1C3326;
   --shadow:0 2px 12px rgb(0 0 0 / .35);
 }
@@ -423,7 +423,7 @@ footer .wrap{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap}
 .mapa-acoes{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
 .resumo .mapa-acoes .chip{background:transparent;color:#fff;border:1px solid rgb(255 255 255 / .6);font-weight:800}
 .mapa-acoes .dist{font-size:13px;font-weight:700;flex:1;min-width:150px}
-.mapa-acoes .dist.fora{background:#fff;color:#A92F2F;border-radius:6px;padding:6px 8px}
+.mapa-acoes .dist.fora{background:#fff;color:#B3000F;border-radius:6px;padding:6px 8px}
 .agendado{display:flex;gap:6px;align-items:center;margin:0;font-weight:800;color:var(--red)}
 .agendado svg{width:18px;height:18px}
 .peca .sec-h h2{color:var(--red)}

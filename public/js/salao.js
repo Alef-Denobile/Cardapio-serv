@@ -4,6 +4,7 @@
    Sem tela de início: barra lateral com as categorias, os pratos e o carrinho. */
 (function(){
 'use strict';
+const N = n => String(n == null ? '' : n).padStart(3, '0'); // número do pedido do dia: 001, 002…
 const $ = s => document.querySelector(s), $$ = s => Array.from(document.querySelectorAll(s));
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const brl = v => (+v || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
@@ -23,7 +24,7 @@ const SLUG = rota[1] || '', MESA = rota[2] ? Math.trunc(+rota[2]) : 0, TOKEN = n
 const CHAVE = 'salao:' + SLUG + ':' + MESA;
 let R = null, P = [];
 const S = { cat: null, q: '', cart: ler(CHAVE + ':cart', []), mesaOk: false, item: null, aberto: false, nome: ler('salao:nome', ''), tel: ler('salao:tel', ''), pag: 'local', obs: '', enviando: false,
-  meus: ler(CHAVE + ':pedidos', []).filter(x => x && x.id && x.c && Date.now() - x.em < 8 * 3600000), pedidos: [], conta: null, contaF: { pag: 'cartao', pessoas: 1 }, contaOk: null, socket: null };
+  meus: ler(CHAVE + ':pedidos', []).filter(x => x && x.id && x.c && new Date(x.em).toDateString() === new Date().toDateString()), pedidos: [], conta: null, contaF: { pag: 'cartao', pessoas: 1 }, contaOk: null, socket: null };
 const salvar = () => { gravar(CHAVE + ':cart', S.cart); gravar(CHAVE + ':pedidos', S.meus.slice(0, 15)); gravar('salao:nome', S.nome); };
 
 const prod = id => P.find(p => p.id === id);
@@ -112,22 +113,21 @@ function renderCarr(){
           '<div class="sl-step"><button data-linha="' + esc(x.l.k) + '" data-d="-1" aria-label="Tirar um">−</button><span>' + x.l.q + '</span><button data-linha="' + esc(x.l.k) + '" data-d="1" aria-label="Mais um">+</button></div></div>'; }).join('') + '</div>' +
       (sug.length ? '<div class="sl-peca"><p>Peça também</p>' + sug.map(p => '<button class="sl-peca-i" data-add="' + p.id + '">' + foto(p, 'sl-pth') + '<span>' + esc(p.nome) + '<small>' + brl(p.preco) + '</small></span><i aria-hidden="true">+</i></button>').join('') + '</div>' : '') +
       (B ? '<label class="sl-l" for="sl-nome">Seu nome</label><input id="sl-nome" maxlength="40" value="' + esc(S.nome) + '" autocomplete="given-name" placeholder="Para chamarmos quando ficar pronto">' +
-          '<label class="sl-l" for="sl-tel">WhatsApp com DDD</label><input id="sl-tel" inputmode="tel" maxlength="20" value="' + esc(S.tel || '') + '" autocomplete="tel" placeholder="(15) 99999-0000">' +
           '<p class="sl-l">Pagamento</p><div class="sl-seg">' + pagsBalcao().map(m => '<button data-bpag="' + m + '" aria-pressed="' + (S.pag === m) + '">' + (m === 'pix' ? 'Pix' : 'No caixa') + '</button>').join('') + '</div>'
         : '<label class="sl-l" for="sl-nome">Seu nome <small>(opcional, ajuda o garçom)</small></label><input id="sl-nome" maxlength="40" value="' + esc(S.nome) + '" autocomplete="given-name">') +
       '<label class="sl-l" for="sl-obs">Observações</label><input id="sl-obs" maxlength="300" placeholder="Ex.: sem cebola" value="' + esc(S.obs) + '">' +
       '<div class="sl-tot"><div><span>Subtotal</span><span>' + brl(sub) + '</span></div>' + (servB ? '<div><span>Serviço (' + R.taxaServico + '%)</span><span>' + brl(servB) + '</span></div>' : '') + '<div class="t"><span>Total</span><span>' + brl(sub + servB) + '</span></div></div>' +
-      '<button class="sl-enviar" data-act="enviar"' + (podePedir() && !S.enviando ? '' : ' disabled') + '>' + (S.enviando ? 'Enviando…' : B ? 'Enviar pedido · retirar no balcão' : 'Enviar para a cozinha') + '</button>' +
-      '<p class="sl-dica">' + (B ? (S.pag === 'pix' && R.chavePix ? 'Pague com Pix na chave ' + esc(R.chavePix) + ' e mostre no balcão. ' : 'Pague no caixa ao retirar. ') + 'Esta tela mostra quando ficar pronto.' : 'Você paga no final, quando pedir a conta.') + '</p>';
+      '<button class="sl-enviar" data-act="enviar"' + (podePedir() && !S.enviando ? '' : ' disabled') + '>' + (S.enviando ? 'Enviando…' : 'Finalizar pedido') + '</button>' +
+      '<p class="sl-dica">' + (B ? (S.pag === 'pix' && R.chavePix ? 'Pague com Pix na chave ' + esc(R.chavePix) + ' e mostre no balcão. ' : 'Pague no caixa ao retirar. ') + 'Retire no balcão quando chamarmos seu número.' : 'Você paga no final, quando pedir a conta.') + '</p>';
   }
-  if (meus.length) h += '<div class="sl-meus"><p>' + (MESA ? 'Pedidos desta mesa' : 'Seus pedidos') + '</p>' + meus.map(p => '<div class="sl-meu ' + p.status + '"><strong>#' + p.numero + '</strong><span>' + esc(stTxt(p)) + '</span><small>' + p.linhas.map(l => l.qtd + '× ' + esc(l.nome)).join(', ') + '</small></div>').join('') +
+  if (meus.length) h += '<div class="sl-meus"><p>' + (MESA ? 'Pedidos desta mesa' : 'Seus pedidos') + '</p>' + meus.map(p => '<div class="sl-meu ' + p.status + '"><strong>#' + N(p.numero) + '</strong><span>' + esc(stTxt(p)) + '</span><small>' + p.linhas.map(l => l.qtd + '× ' + esc(l.nome)).join(', ') + '</small></div>').join('') +
     (S.mesaOk && R.recursos.chamados !== false ? '<button class="sl-sec-bt" data-act="conta">' + ICO.conta + 'Ver e pedir a conta</button>' : '') + '</div>';
   $('#carr').innerHTML = h;
   // barra de baixo (celular)
   const n = qtd(), ativo = meus.find(p => !['entregue', 'cancelado'].includes(p.status));
   $('#barra').hidden = !(n || ativo);
   $('#barra').innerHTML = n ? '<button data-act="abrir-carr"><span>' + ICO.carr + n + (n > 1 ? ' itens' : ' item') + '</span><strong>Ver pedido · ' + brl(sub + servB) + '</strong></button>'
-    : ativo ? '<button data-act="abrir-carr" class="acomp"><span>Pedido #' + ativo.numero + '</span><strong>' + esc(stTxt(ativo)) + '</strong></button>' : '';
+    : ativo ? '<button data-act="abrir-carr" class="acomp"><span>Pedido #' + N(ativo.numero) + '</span><strong>' + esc(stTxt(ativo)) + '</strong></button>' : '';
   document.body.classList.toggle('carr-aberto', S.aberto);
   const cn = $('#carr-n'); if (cn){ cn.hidden = !n; cn.textContent = n; $('#bt-carr').setAttribute('aria-label', n ? 'Abrir o carrinho, ' + n + (n > 1 ? ' itens' : ' item') : 'Abrir o carrinho'); }
   $('#fundo').hidden = !S.aberto;
@@ -166,16 +166,15 @@ async function enviar(){
   const B = !S.mesaOk && balcao();
   if (B){
     if ((S.nome || '').trim().length < 2){ toast('Diga seu nome para chamarmos quando ficar pronto.'); const i = $('#sl-nome'); if (i) i.focus(); return; }
-    if ((S.tel || '').replace(/\D/g, '').length < 10){ toast('Informe seu WhatsApp com DDD.'); const i = $('#sl-tel'); if (i) i.focus(); return; }
   }
   S.enviando = true; renderCarr();
   try {
-    const corpo = B ? { tipo: 'retirada', cliente: { nome: S.nome.trim(), tel: S.tel }, pagamento: { metodo: pagsBalcao().includes(S.pag) ? S.pag : 'local' } }
+    const corpo = B ? { tipo: 'retirada', local: true, cliente: { nome: S.nome.trim() }, pagamento: { metodo: pagsBalcao().includes(S.pag) ? S.pag : 'local' } }
       : { tipo: 'mesa', mesa: { numero: MESA, token: TOKEN }, cliente: { nome: S.nome || 'Mesa ' + pad(MESA) }, pagamento: { metodo: 'local' } };
     const d = await api('POST', '/api/r/' + encodeURIComponent(SLUG) + '/pedidos', Object.assign(corpo, { itens: ls.map(x => ({ produto: x.p.id, qtd: x.l.q, escolhas: x.l.sel })), obs: S.obs }));
     S.meus.unshift({ id: d.pedido.id, c: d.codigo, em: Date.now() }); S.pedidos.unshift(d.pedido);
     S.cart = []; S.obs = ''; S.enviando = false; salvar(); conectar(); atualizarItens();
-    toast('Pedido #' + d.pedido.numero + (B ? ' enviado! Avisamos aqui quando ficar pronto.' : ' enviado para a cozinha!'));
+    toast('Pedido #' + N(d.pedido.numero) + (B ? ' enviado! Avisamos aqui quando ficar pronto.' : ' enviado para a cozinha!'));
   } catch (e) { S.enviando = false; renderCarr(); toast(e.message); if (e.status === 409) recarregar(); }
 }
 async function carregarPedidos(){
@@ -186,7 +185,7 @@ function conectar(){
   if (typeof io !== 'function' || !S.meus.length) return;
   if (S.socket) S.socket.close();
   S.socket = io({ auth: { pedidos: S.meus.slice(0, 15).map(x => ({ id: x.id, c: x.c })) } });
-  S.socket.on('pedido:atualizado', p => { const i = S.pedidos.findIndex(x => x.id === p.id); if (i >= 0){ const antes = S.pedidos[i].status; S.pedidos[i] = Object.assign({}, S.pedidos[i], p); if (antes !== p.status) toast('Pedido #' + p.numero + ': ' + STATUS[p.status].toLowerCase()); } else carregarPedidos(); renderCarr(); });
+  S.socket.on('pedido:atualizado', p => { const i = S.pedidos.findIndex(x => x.id === p.id); if (i >= 0){ const antes = S.pedidos[i].status; S.pedidos[i] = Object.assign({}, S.pedidos[i], p); if (antes !== p.status) toast('Pedido #' + N(p.numero) + ': ' + STATUS[p.status].toLowerCase()); } else carregarPedidos(); renderCarr(); });
   S.socket.on('connect', carregarPedidos);
 }
 async function recarregar(){ try { const d = await api('GET', '/api/r/' + encodeURIComponent(SLUG)); R = d.restaurante; P = d.produtos; S.cart = S.cart.filter(l => prod(l.id) && !prod(l.id).esgotado); salvar(); render(); } catch (e) {} }
@@ -259,7 +258,6 @@ document.addEventListener('input', e => {
   if (t.id === 'busca'){ S.q = t.value; renderProds(); marcarCat(S.cat); return; }
   if (t.id === 'sl-nome'){ S.nome = t.value; salvar(); return; }
   if (t.id === 'sl-obs'){ S.obs = t.value; }
-  if (t.id === 'sl-tel'){ S.tel = t.value; gravar('salao:tel', S.tel); }
 });
 document.addEventListener('keydown', e => { if (e.key === 'Escape'){ if ($('#modal').innerHTML) fecharModal(); else if (S.aberto){ S.aberto = false; renderCarr(); } } });
 document.addEventListener('error', e => { const img = e.target; if (!(img instanceof HTMLImageElement) || img.dataset.falhou) return; img.dataset.falhou = '1';

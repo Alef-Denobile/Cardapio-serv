@@ -3,6 +3,7 @@
    pago no caixa ou por Pix. Volta sozinho para o início depois de cada pedido ou se ficar parado. */
 (function(){
 'use strict';
+const N = n => String(n == null ? '' : n).padStart(3, '0'); // número do pedido do dia: 001, 002…
 const $ = s => document.querySelector(s), $$ = s => Array.from(document.querySelectorAll(s));
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const brl = v => (+v || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
@@ -78,7 +79,7 @@ function telaDados(){
 }
 function telaFim(){
   const p = S.ultimo, pix = p.pagamento.metodo === 'pix';
-  return '<section class="tt-fim"><p class="tt-ok">Pedido recebido!</p><p>Sua senha é</p><div class="tt-senha">' + p.numero + '</div>' +
+  return '<section class="tt-fim"><p class="tt-ok">Pedido recebido!</p><p>Sua senha é</p><div class="tt-senha">' + N(p.numero) + '</div>' +
     '<p class="tt-fim-msg">' + esc((p.cliente && p.cliente.nome) || '') + ', ' + (pix ? 'pague ' + brl(p.total) + ' com Pix' + (R.chavePix ? ' na chave <strong>' + esc(R.chavePix) + '</strong>' : '') + ' e mostre o comprovante no balcão.' : 'pague ' + brl(p.total) + ' no caixa informando a sua senha.') +
     ' Vamos chamar pelo número quando ficar pronto' + (p.consumo === 'viagem' ? ', embalado para levar.' : '.') + '</p>' +
     '<button class="tt-pri" data-act="recomecar">Novo pedido</button><p class="tt-dica" id="tt-volta"></p></section>';

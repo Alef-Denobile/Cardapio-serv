@@ -1,6 +1,6 @@
 /* Mesma identidade do site do restaurante: vermelho, fundo claro e fonte Nunito */
 :root{
-  --brand:#D23F3F; --brand-ink:#FFFFFF;
+  --brand:#E30613; --brand-ink:#FFFFFF;
   --bg:#FBF7F6; --surface:#FFFFFF; --ink:#1D2142; --muted:#676A7E; --line:#ECE6E6;
   --accent:var(--brand); --accent-ink:var(--brand-ink);
   --chip:color-mix(in srgb, var(--brand) 9%, var(--surface));

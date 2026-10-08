@@ -84,7 +84,7 @@ async function gerarHistorico(c, rest, produtos) {
   const disp = produtos.filter(p => !p.esgotado), bairros = rest.delivery.bairros;
   const cent = v => Math.round(v * 100) / 100;
   const agora = Date.now(), hoje0 = new Date(); hoje0.setHours(0, 0, 0, 0);
-  let n = 0, num = 100;
+  let n = 0, num = 0; const porDia = new Map(), diaDe = t => new Intl.DateTimeFormat('en-CA', { timeZone: rest.fuso }).format(new Date(t));
   for (let d = 30; d >= 0; d--) {
     const dia = hoje0.getTime() - d * 86400000, dow = new Date(dia).getDay();
     const qtd = Math.round((dow === 5 || dow === 6 ? 31 : dow === 0 ? 27 : dow === 1 ? 14 : 20) * (0.85 + rnd() * 0.3));
@@ -104,10 +104,11 @@ async function gerarHistorico(c, rest, produtos) {
       const b = pick(bairros), ent = tipo === 'delivery' ? (rest.delivery.gratisAcimaDe && sub >= rest.delivery.gratisAcimaDe ? 0 : b.taxa) : 0;
       const pag = tipo === 'delivery' ? pick(['pix', 'pix', 'cartao', 'cartao', 'dinheiro']) : pick(['pix', 'local', 'local']);
       const e = tipo === 'delivery' ? pick(ents) : null;
-      const pd = (await c.query(`INSERT INTO pedidos (restaurante_id, numero, tipo, mesa, cliente_nome, cliente_tel, entrega_endereco, entrega_bairro, subtotal, servico, taxa_entrega, total, pag_metodo, pag_pago, status, entregador_id, entregador_nome, codigo_acomp, criado_em, atualizado_em)
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,true,'entregue',$14,$15,$16,$17,$17) RETURNING id`,
-        [rest.id, ++num, tipo, tipo === 'mesa' ? mesa() : null, pick(nomes), tipo === 'mesa' ? '' : '(15) 99' + (100 + Math.floor(rnd() * 899)) + '-' + (1000 + Math.floor(rnd() * 8999)),
-          tipo === 'delivery' ? pick(ruas) + ', ' + (10 + Math.floor(rnd() * 900)) : null, tipo === 'delivery' ? b.nome : null, sub, serv, ent, cent(sub + serv + ent), pag, e && e.id, e && e.nome, 'exemplo' + num, new Date(ts)])).rows[0];
+      const diaL = diaDe(ts); num = (porDia.get(diaL) || 0) + 1; porDia.set(diaL, num); // número do dia: 001, 002…
+      const pd = (await c.query(`INSERT INTO pedidos (restaurante_id, numero, tipo, mesa, cliente_nome, cliente_tel, entrega_endereco, entrega_bairro, subtotal, servico, taxa_entrega, total, pag_metodo, pag_pago, status, entregador_id, entregador_nome, codigo_acomp, criado_em, atualizado_em, dia)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,true,'entregue',$14,$15,$16,$17,$17,$18) RETURNING id`,
+        [rest.id, num, tipo, tipo === 'mesa' ? mesa() : null, pick(nomes), tipo === 'mesa' ? '' : '(15) 99' + (100 + Math.floor(rnd() * 899)) + '-' + (1000 + Math.floor(rnd() * 8999)),
+          tipo === 'delivery' ? pick(ruas) + ', ' + (10 + Math.floor(rnd() * 900)) : null, tipo === 'delivery' ? b.nome : null, sub, serv, ent, cent(sub + serv + ent), pag, e && e.id, e && e.nome, 'exemplo' + diaL + '-' + num, new Date(ts), diaL])).rows[0];
       const vals = [], ph = [];
       itens.forEach((i, x) => { vals.push(pd.id, rest.id, i.p.id, i.p.nome, i.qtd, i.p.preco, i.ops, x); const o = x * 8; ph.push(`($${o + 1},$${o + 2},$${o + 3},$${o + 4},$${o + 5},$${o + 6},$${o + 7},$${o + 8})`); });
       await c.query('INSERT INTO pedido_itens (pedido_id, restaurante_id, produto_id, nome, qtd, unit, opcoes, ordem) VALUES ' + ph.join(','), vals);
@@ -115,7 +116,9 @@ async function gerarHistorico(c, rest, produtos) {
       n++;
     }
   }
-  await c.query('UPDATE restaurantes SET seq_pedido = $2 WHERE id = $1', [rest.id, num]);
+  // continua a numeração de hoje depois dos pedidos de exemplo
+  await c.query(`UPDATE restaurantes SET seq_dia = (now() AT TIME ZONE fuso)::date,
+    seq_pedido = coalesce((SELECT max(numero) FROM pedidos WHERE restaurante_id = $1 AND dia = (now() AT TIME ZONE restaurantes.fuso)::date), 0) WHERE id = $1`, [rest.id]);
   return n;
 }
 
@@ -149,7 +152,7 @@ async function criarDemo(c, { reset = false, historico = false } = {}) {
   const { rest } = await criarRestaurante(c, {
     nome: 'Sabor da Casa', slug: SLUG, email: EMAILS.dono, senha: SENHA, nomeDono: 'Dona Lúcia', mesas: 12,
     extras: { frase: 'Hambúrgueres artesanais, bebidas e sobremesas', sobre: 'Hamburgueria de bairro: blends grelhados na hora, pão brioche, milkshakes e sobremesas para fechar com chave de ouro.',
-      capaUrl: F('burger'), cor: '#D23F3F', abre: '11:00', fecha: '23:30', aceitarForaDoHorario: true, taxaServico: 10, chavePix: 'pix@sabordacasa.com', whatsapp: '(15) 99999-0000',
+      capaUrl: F('burger'), cor: '#E30613', abre: '11:00', fecha: '23:30', aceitarForaDoHorario: true, taxaServico: 10, chavePix: 'pix@sabordacasa.com', whatsapp: '(15) 99999-0000',
       categorias: CATEGORIAS,
       delivery: { ativo: true, tempo: '35–45 min', tempoRetirada: '20–30 min', pedidoMinimo: 30, gratisAcimaDe: 100,
         bairros: [{ nome: 'Centro', taxa: 6 }, { nome: 'Jardim América', taxa: 8 }, { nome: 'Vila Nova', taxa: 10 }, { nome: 'Campolim', taxa: 12 }],

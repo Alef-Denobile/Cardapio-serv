@@ -28,8 +28,8 @@
     const m = L.map(el, { scrollWheelZoom: false, tap: true }).setView([centro.lat, centro.lng], o.zoom || (o.ponto || o.centro ? 15 : 4));
     L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>' }).addTo(m);
     if (o.restaurante) {
-      L.circleMarker([o.restaurante.lat, o.restaurante.lng], { radius: 8, color: '#fff', weight: 3, fillColor: getComputedStyle(document.documentElement).getPropertyValue('--red').trim() || '#D23F3F', fillOpacity: 1 }).addTo(m).bindTooltip('Restaurante');
-      if (o.raioKm) L.circle([o.restaurante.lat, o.restaurante.lng], { radius: o.raioKm * 1000, color: '#D23F3F', weight: 1, fillOpacity: .04, interactive: false }).addTo(m);
+      L.circleMarker([o.restaurante.lat, o.restaurante.lng], { radius: 8, color: '#fff', weight: 3, fillColor: getComputedStyle(document.documentElement).getPropertyValue('--red').trim() || '#E30613', fillOpacity: 1 }).addTo(m).bindTooltip('Restaurante');
+      if (o.raioKm) L.circle([o.restaurante.lat, o.restaurante.lng], { radius: o.raioKm * 1000, color: '#E30613', weight: 1, fillOpacity: .04, interactive: false }).addTo(m);
     }
     let pino = null;
     const colocar = (lat, lng, avisar) => {

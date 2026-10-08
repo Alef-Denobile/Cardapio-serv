@@ -1,6 +1,7 @@
 /* Área de devs: todos os restaurantes da plataforma */
 (function(){
 'use strict';
+const N = n => String(n == null ? '' : n).padStart(3, '0'); // número do pedido do dia: 001, 002…
 const { $, $$, esc, brl, pad, hora, initials, toast, aplicarCor, foto, api, guardar, copiar, pagTxt, ajudaSenha } = C;
 ajudaSenha('Quem tem acesso ao servidor define uma senha nova com: npm run novo-admin -- --email seu@email --senha "nova senha" --trocar-senha');
 const SELOS = ['vegetariano', 'vegano', 'sem glúten'];
@@ -37,7 +38,7 @@ $('#f-login').addEventListener('submit', async e => {
   b.disabled = false; b.textContent = 'Entrar';
 });
 function sair(msg){ guardar.apagar('admin:token'); S.token = ''; mostrarLogin(msg); }
-function entrar(){ $('#v-login').hidden = true; $('#v-app').hidden = false; aplicarCor('#D23F3F'); render(); }
+function entrar(){ $('#v-login').hidden = true; $('#v-app').hidden = false; aplicarCor('#E30613'); render(); }
 
 /* ---------- estrutura ---------- */
 function render(){
@@ -165,7 +166,7 @@ async function subPedidos(){
   try {
     const l = (await chamar('GET', '/api/admin/restaurantes/' + S.sel + '/pedidos?limite=50')).pedidos;
     $('#sub').innerHTML = '<p class="note" style="margin-top:0">Só consulta. Para mudar o andamento de um pedido, use o painel do restaurante.</p><div class="card tbl" style="padding:0"><table><thead><tr><th>Pedido</th><th>Data</th><th>Onde</th><th>Cliente</th><th style="text-align:right">Total</th><th>Pagamento</th><th>Status</th></tr></thead><tbody>' +
-      (l.map(p => '<tr><td>#' + p.numero + '</td><td>' + quando(p.createdAt) + '</td><td>' + (p.tipo === 'mesa' ? 'Mesa ' + pad(p.mesa) : p.tipo === 'delivery' ? 'Entrega · ' + esc(p.entrega && p.entrega.bairro) : 'Retirada') + '</td><td>' + esc(p.cliente && p.cliente.nome) + '</td><td style="text-align:right">' + brl(p.total) + '</td><td>' + esc(pagTxt(p)) + (p.pagamento.pago ? ' · pago' : '') + '</td><td>' + C.STATUS[p.status] + '</td></tr>').join('') || '<tr><td colspan="7" class="note">Nenhum pedido ainda.</td></tr>') + '</tbody></table></div>';
+      (l.map(p => '<tr><td>#' + N(p.numero) + '</td><td>' + quando(p.createdAt) + '</td><td>' + (p.tipo === 'mesa' ? 'Mesa ' + pad(p.mesa) : p.tipo === 'delivery' ? 'Entrega · ' + esc(p.entrega && p.entrega.bairro) : 'Retirada') + '</td><td>' + esc(p.cliente && p.cliente.nome) + '</td><td style="text-align:right">' + brl(p.total) + '</td><td>' + esc(pagTxt(p)) + (p.pagamento.pago ? ' · pago' : '') + '</td><td>' + C.STATUS[p.status] + '</td></tr>').join('') || '<tr><td colspan="7" class="note">Nenhum pedido ainda.</td></tr>') + '</tbody></table></div>';
   } catch (e) { $('#sub').innerHTML = '<p class="erro">' + esc(e.message) + '</p>'; }
 }
 

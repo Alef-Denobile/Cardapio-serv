@@ -35,7 +35,7 @@ async function avisar(rest, p) {
     const st = textoStatus(p), para = numeroWhats(p.cliente && p.cliente.tel);
     if (!st || !para) return false;
     const nome = String((p.cliente && p.cliente.nome) || 'cliente').split(' ')[0];
-    const params = [nome, String(p.numero), rest.nome, st]; // "Olá, {{1}}! Pedido #{{2}} no {{3}}: {{4}}."
+    const params = [nome, String(p.numero).padStart(3, '0'), rest.nome, st]; // "Olá, {{1}}! Pedido #{{2}} no {{3}}: {{4}}."
     if (prov === 'log') console.log(`[WhatsApp] para ${para.slice(0, 4)}…${para.slice(-2)}: Olá, ${params[0]}! Pedido #${params[1]} no ${params[2]}: ${params[3]}.`);
     else if (prov === 'meta') await enviarMeta(para, params);
     return true;

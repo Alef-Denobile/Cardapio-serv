@@ -3,6 +3,7 @@
    o cliente é levado para a página segura dela, e esta tela só mostra o resultado. */
 (function(){
 'use strict';
+const N = n => String(n == null ? '' : n).padStart(3, '0'); // número do pedido do dia: 001, 002…
 const $ = s => document.querySelector(s);
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const brl = v => (+v || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
@@ -31,7 +32,7 @@ function tela(){
       '<div class="demo"><strong>Ambiente de demonstração</strong><p>Nenhum cartão é pedido e nada é cobrado. Quando a empresa de pagamento for escolhida, este passo vira a página segura dela (cartão ou Pix).</p></div>' +
       '<div class="row-pag"><button class="pedir" data-r="aprovar">Simular pagamento aprovado</button><button class="btn sec" data-r="recusar">Simular pagamento recusado</button></div>';
   } else corpo = '<div class="alerta">O pagamento pelo site não está disponível agora. Fale com o restaurante.</div>';
-  app.innerHTML = '<section class="resumo pag-box" aria-label="Pagamento do pedido"><h2>Pedido #' + P.numero + ' · ' + esc(P.restaurante.nome) + '</h2>' + resumo + corpo + '</section>';
+  app.innerHTML = '<section class="resumo pag-box" aria-label="Pagamento do pedido"><h2>Pedido #' + N(P.numero) + ' · ' + esc(P.restaurante.nome) + '</h2>' + resumo + corpo + '</section>';
 }
 document.addEventListener('click', async e => {
   const b = e.target.closest('[data-r]'); if (!b) return;

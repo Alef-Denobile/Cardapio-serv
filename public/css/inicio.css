@@ -1,4 +1,4 @@
-:root{ --cor:#D23F3F; --tinta:#1D2142; }
+:root{ --cor:#E30613; --tinta:#1D2142; }
 *{ box-sizing:border-box; }
 html,body{ margin:0; min-height:100%; }
 body{ font:16px/1.45 Nunito, system-ui, sans-serif; color:#fff; background:var(--tinta); }

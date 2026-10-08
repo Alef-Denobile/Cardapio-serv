@@ -1,6 +1,7 @@
 /* Painel do restaurante: dono, cozinha e entregador */
 (function(){
 'use strict';
+const N = n => String(n == null ? '' : n).padStart(3, '0'); // número do pedido do dia: 001, 002…
 const { $, $$, esc, brl, pad, hora, ago, initials, toast, aplicarCor, foto, api, guardar, copiar, pagTxt, trocoTxt, ajudaSenha } = C;
 ajudaSenha('Cozinha ou entregador: peça ao dono do restaurante para criar uma senha nova para você (Painel → Equipe → Nova senha). Dono: fale com o suporte da plataforma, que define uma senha nova para você.');
 const SELOS = ['vegetariano', 'vegano', 'sem glúten'];
@@ -62,12 +63,12 @@ function conectarTempoReal(){
   S.socket.on('connect', () => { $('#offline').hidden = true; carregarPedidos().then(() => { if (['pedidos', 'entregas'].includes(S.aba)) render(); }); });
   S.socket.on('disconnect', () => { $('#offline').hidden = false; });
   S.socket.on('connect_error', e => { $('#offline').hidden = false; if (e.message === 'nao-autorizado') sair('Sua sessão expirou. Entre de novo.'); });
-  S.socket.on('pedido:novo', p => { if (S.eu.papel === 'entregador'){ if (p.tipo === 'delivery'){ upsert(p); atualizarAbas(); } return; } upsert(p); bip(); toast('Novo pedido #' + p.numero); atualizarAbas(); if (S.imp.auto) imprimirPedido(p, true); });
+  S.socket.on('pedido:novo', p => { if (S.eu.papel === 'entregador'){ if (p.tipo === 'delivery'){ upsert(p); atualizarAbas(); } return; } upsert(p); bip(); toast('Novo pedido #' + N(p.numero)); atualizarAbas(); if (S.imp.auto) imprimirPedido(p, true); });
   S.socket.on('pedido:atualizado', p => {
     if (S.eu.papel === 'entregador' && p.tipo !== 'delivery') return;
     const antes = S.pedidos.find(x => x._id === p._id);
     upsert(p);
-    if (S.eu.papel === 'entregador' && p.status === 'pronto' && (!antes || antes.status !== 'pronto')){ bip(); toast('Entrega #' + p.numero + ' pronta para sair'); }
+    if (S.eu.papel === 'entregador' && p.status === 'pronto' && (!antes || antes.status !== 'pronto')){ bip(); toast('Entrega #' + N(p.numero) + ' pronta para sair'); }
     atualizarAbas();
   });
   S.socket.on('chamado:novo', c => { if (S.eu.papel === 'entregador') return; S.chamados.push(c); bip(); toast('Mesa ' + pad(c.mesa) + (c.tipo === 'conta' ? ' pediu a conta' : ' chamou o garçom')); atualizarAbas(); });
@@ -133,7 +134,7 @@ const soNumeros = t => String(t || '').replace(/\D/g, '');
 function linkWhats(p){
   let n = soNumeros(p.cliente && p.cliente.tel); if (n.length < 10) return '';
   if (n.length <= 11) n = '55' + n;
-  const nome = String((p.cliente && p.cliente.nome) || '').split(' ')[0], r = S.rest.nome, k = '#' + p.numero;
+  const nome = String((p.cliente && p.cliente.nome) || '').split(' ')[0], r = S.rest.nome, k = '#' + N(p.numero);
   const txt = {
     novo: 'Olá, ' + nome + '! Recebemos seu pedido ' + k + ' no ' + r + '. Já vamos começar a preparar.',
     preparo: 'Olá, ' + nome + '! Seu pedido ' + k + ' do ' + r + ' está sendo preparado.',
@@ -159,9 +160,9 @@ function cartao(p, modo){
   else if (p.status === 'pronto') acao = '<button class="btn sm" data-act="status" data-s="entregue" data-id="' + p._id + '">' + (p.tipo === 'retirada' ? 'Retirado' : 'Servido') + '</button>';
   else if (p.status === 'rota') acao = '<button class="btn sm ghost" data-act="status" data-s="entregue" data-id="' + p._id + '">Confirmar entrega</button>';
   const maps = p.entrega && p.entrega.lat != null ? 'https://www.google.com/maps/search/?api=1&query=' + p.entrega.lat + ',' + p.entrega.lng : 'https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(ender(p));
-  const extras = (p.agendadoPara ? '<span class="badge b-warn">Agendado · ' + esc(diaHora(p.agendadoPara)) + '</span>' : '') + (p.origem === 'totem' ? '<span class="badge b-neu">Totem · ' + (p.consumo === 'viagem' ? 'para levar' : 'comer aqui') + '</span>' : '');
+  const extras = (p.agendadoPara ? '<span class="badge b-warn">Agendado · ' + esc(diaHora(p.agendadoPara)) + '</span>' : '') + (p.origem === 'totem' ? '<span class="badge b-neu">Totem · ' + (p.consumo === 'viagem' ? 'para levar' : 'comer aqui') + '</span>' : '') + (p.origem === 'salao' ? '<span class="badge b-neu">Salão · retirar no balcão</span>' : '');
   const pixPend = p.pagamento.metodo === 'pix' && !p.pagamento.pago;
-  return '<div class="ord' + (fresh ? ' fresh' : '') + '"><div class="ord-h"><strong>#' + p.numero + ' · ' + onde(p) + '</strong><span>' + hora(p.createdAt) + ' · ' + ago(p.createdAt) + '</span></div>' +
+  return '<div class="ord' + (fresh ? ' fresh' : '') + '"><div class="ord-h"><strong>#' + N(p.numero) + ' · ' + onde(p) + '</strong><span>' + hora(p.createdAt) + ' · ' + ago(p.createdAt) + '</span></div>' +
     (extras ? '<div class="row" style="margin:0;gap:6px">' + extras + '</div>' : '') +
     '<div class="note" style="margin:0">' + esc(p.cliente && p.cliente.nome) + (p.cliente && p.cliente.tel ? ' · ' + esc(p.cliente.tel) : '') + (p.cliente && p.cliente.cpf ? ' · CPF ' + esc(p.cliente.cpf) : '') + '</div>' +
     (dl ? '<div class="addr' + (modo === 'ent' ? ' big-addr' : '') + '">' + esc(ender(p)) + (p.entrega.km != null ? ' · ' + esc(String(p.entrega.km).replace('.', ',')) + ' km' : '') + (p.entrega.referencia ? '<br><small>Ref.: ' + esc(p.entrega.referencia) + '</small>' : '') + (modo === 'ent' ? '<br><a href="' + esc(maps) + '" target="_blank" rel="noopener">Abrir no mapa</a>' : '') + '</div>' : '') +
@@ -196,16 +197,16 @@ function chamadoTxt(c){
 function renderPedidos(){
   const KF = S.kf;
   // avisa quando um pedido agendado chega na hora de preparar
-  S.pedidos.forEach(p => { if (futuro(p)) S.agFuturos.add(p._id); else if (S.agFuturos.has(p._id)){ S.agFuturos.delete(p._id); if (p.status === 'novo'){ bip(); toast('Hora de preparar o pedido agendado #' + p.numero + ' (' + hora(p.agendadoPara) + ')'); S.vistos.delete(p._id); } } });
+  S.pedidos.forEach(p => { if (futuro(p)) S.agFuturos.add(p._id); else if (S.agFuturos.has(p._id)){ S.agFuturos.delete(p._id); if (p.status === 'novo'){ bip(); toast('Hora de preparar o pedido agendado #' + N(p.numero) + ' (' + hora(p.agendadoPara) + ')'); S.vistos.delete(p._id); } } });
   const agds = S.pedidos.filter(futuro).filter(p => KF === 'todos' || p.tipo === KF).sort((a, b) => new Date(a.agendadoPara) - new Date(b.agendadoPara));
   const lista = S.pedidos.filter(p => !futuro(p)).filter(p => KF === 'todos' || p.tipo === KF).sort((a, b) => new Date(a.agendadoPara || a.createdAt) - new Date(b.agendadoPara || b.createdAt));
   const col = (st, t) => { const l = lista.filter(p => p.status === st); return '<div class="col"><h3>' + t + ' <span>' + l.length + '</span></h3>' + (l.map(p => cartao(p)).join('') || '<p class="note" style="padding:4px">Nada por aqui.</p>') + '</div>'; };
   const mostraRota = KF === 'todos' || KF === 'delivery';
   const chips = [['todos', 'Todos'], ['delivery', 'Entrega'], ['retirada', 'Retirada'], ['mesa', 'Mesas']].map(o => '<button class="chip" data-act="kf" data-k="' + o[0] + '" aria-pressed="' + (KF === o[0]) + '">' + o[1] + ' · ' + S.pedidos.filter(p => o[0] === 'todos' || p.tipo === o[0]).length + '</button>').join('');
-  $('#pane').innerHTML = '<div class="kbar"><div class="chips">' + chips + '</div><div class="row" style="margin:0;align-items:center"><span class="note" style="margin:0">' + S.finalizadosHoje + ' pedidos finalizados hoje</span><button class="btn sm ghost" data-act="imp-abrir" aria-expanded="' + S.impAberta + '">Impressora' + (S.imp.auto ? ' · automática' : '') + '</button></div></div>' + painelImp() +
+  $('#pane').innerHTML = '<div class="kbar"><div class="chips">' + chips + '</div><div class="row" style="margin:0;align-items:center">' + (S.eu.papel === 'dono' ? '<button class="mini" data-act="ver-hoje">' + S.finalizadosHoje + ' pedidos finalizados hoje · ver no histórico</button>' : '<span class="note" style="margin:0">' + S.finalizadosHoje + ' pedidos finalizados hoje</span>') + '<button class="btn sm ghost" data-act="imp-abrir" aria-expanded="' + S.impAberta + '">Impressora' + (S.imp.auto ? ' · automática' : '') + '</button></div></div>' + painelImp() +
     (S.chamados.length && (KF === 'todos' || KF === 'mesa') ? '<div class="calls">' + S.chamados.map(c => '<div class="call"><span>' + chamadoTxt(c) + ' · ' + ago(c.createdAt) + '</span><span class="row" style="margin:0;gap:6px">' + (c.tipo === 'conta' ? '<button class="btn sm" data-act="fechar-conta" data-n="' + c.mesa + '">Fechar conta (pago)</button>' : '') + '<button class="btn sm ghost" data-act="atendido" data-id="' + c._id + '">Atendido</button></span></div>').join('') + '</div>' : '') +
     (agds.length ? '<details class="card agds"' + (S.agdsAberto ? ' open' : '') + ' id="agds"><summary><strong>Agendados para mais tarde</strong> <span class="badge b-warn">' + agds.length + '</span><span class="note" style="margin:0 0 0 auto">entram em “Novos” ' + preparoMin() + ' min antes</span></summary>' +
-      agds.map(p => '<div class="agd"><strong>' + esc(diaHora(p.agendadoPara)) + '</strong><span>#' + p.numero + ' · ' + onde(p) + ' · ' + esc(p.cliente && p.cliente.nome) + '</span><span class="note" style="margin:0">' + p.linhas.map(l => l.qtd + '× ' + esc(l.nome)).join(', ') + '</span><span class="note" style="margin:0">' + faltaTxt(p.agendadoPara) + '</span><button class="mini" data-act="imprimir" data-id="' + p._id + '">Imprimir</button></div>').join('') + '</details>' : '') +
+      agds.map(p => '<div class="agd"><strong>' + esc(diaHora(p.agendadoPara)) + '</strong><span>#' + N(p.numero) + ' · ' + onde(p) + ' · ' + esc(p.cliente && p.cliente.nome) + '</span><span class="note" style="margin:0">' + p.linhas.map(l => l.qtd + '× ' + esc(l.nome)).join(', ') + '</span><span class="note" style="margin:0">' + faltaTxt(p.agendadoPara) + '</span><button class="mini" data-act="imprimir" data-id="' + p._id + '">Imprimir</button></div>').join('') + '</details>' : '') +
     '<div class="kan" style="--cols:' + (mostraRota ? 4 : 3) + '">' + col('novo', 'Novos') + col('preparo', 'Em preparo') + col('pronto', 'Prontos') + (mostraRota ? col('rota', 'Em entrega') : '') + '</div>';
   setTimeout(() => lista.forEach(p => S.vistos.add(p._id)), 2500);
 }
@@ -597,7 +598,7 @@ async function carregarHist(){
     if (n && n.status === 'processando') return '<button class="mini" data-act="nota-atualizar" data-id="' + n.id + '">processando…</button>';
     return p.status === 'cancelado' ? '' : '<button class="mini" data-act="nfce" data-id="' + p.id + '">' + (n && n.status === 'erro' ? 'Erro · tentar' : 'Emitir') + '</button>'; };
   $('#h-list').innerHTML = '<div class="card tbl" style="padding:0"><table><thead><tr><th>Pedido</th><th>Data</th><th>Canal</th><th>Cliente</th><th>Itens</th><th style="text-align:right">Total</th><th>Pagamento</th><th>Status</th>' + (nf ? '<th>NFC-e</th>' : '') + '</tr></thead><tbody>' +
-    (d.pedidos.map(p => '<tr><td>#' + p.numero + '</td><td>' + quando(p.createdAt) + '</td><td>' + (p.tipo === 'delivery' ? '<i class="lg s2"></i>Delivery' : '<i class="lg s1"></i>' + (p.tipo === 'mesa' ? 'Mesa ' + pad(p.mesa) : 'Retirada')) + '</td><td>' + esc(p.cliente.nome) + (p.entrega ? ' <small class="note">· ' + esc(p.entrega.bairro) + '</small>' : '') + '</td><td>' + p.itens + '</td><td style="text-align:right">' + brl(p.total) + '</td><td>' + esc(pagTxt(p)) + (p.pagamento.pago ? ' · pago' : '') + '</td><td>' + C.STATUS[p.status] + '</td>' + (nf ? '<td>' + celNota(p) + '</td>' : '') + '</tr>').join('') || '<tr><td colspan="9" class="note">Nenhum pedido encontrado.</td></tr>') +
+    (d.pedidos.map(p => '<tr><td>#' + N(p.numero) + '</td><td>' + quando(p.createdAt) + '</td><td>' + (p.tipo === 'delivery' ? '<i class="lg s2"></i>Delivery' : '<i class="lg s1"></i>' + (p.tipo === 'mesa' ? 'Mesa ' + pad(p.mesa) : 'Retirada')) + '</td><td>' + esc(p.cliente.nome) + (p.entrega ? ' <small class="note">· ' + esc(p.entrega.bairro) + '</small>' : '') + '</td><td>' + p.itens + '</td><td style="text-align:right">' + brl(p.total) + '</td><td>' + esc(pagTxt(p)) + (p.pagamento.pago ? ' · pago' : '') + '</td><td>' + C.STATUS[p.status] + '</td>' + (nf ? '<td>' + celNota(p) + '</td>' : '') + '</tr>').join('') || '<tr><td colspan="9" class="note">Nenhum pedido encontrado.</td></tr>') +
     '</tbody></table></div><div class="row between"><span class="note" style="margin:0">Mostrando ' + d.pedidos.length + ' de ' + d.total + ' pedidos · ' + brl(d.valor) + '</span>' + (d.total > d.pedidos.length ? '<button class="btn sm ghost" data-act="hmore">Mostrar mais</button>' : '') + '</div>';
 }
 let salvarFinT;
@@ -610,7 +611,7 @@ function fecharModal(){ $('#modal').innerHTML = ''; }
 function abrirNfce(id){
   const p = S.pedidos.find(x => x._id === id) || (S.histLista || []).find(x => x.id === id); if (!p) return;
   const pad0 = FORMA_PAD[p.pagamento.metodo] || '';
-  $('#modal').innerHTML = '<div class="veu" data-act="modal-fechar"><form class="caixa" id="f-nfce" data-id="' + id + '" role="dialog" aria-modal="true" aria-labelledby="nf-t" novalidate><h3 id="nf-t" style="margin-top:0">Emitir NFC-e · pedido #' + p.numero + '</h3>' +
+  $('#modal').innerHTML = '<div class="veu" data-act="modal-fechar"><form class="caixa" id="f-nfce" data-id="' + id + '" role="dialog" aria-modal="true" aria-labelledby="nf-t" novalidate><h3 id="nf-t" style="margin-top:0">Emitir NFC-e · pedido #' + N(p.numero) + '</h3>' +
     '<p class="note" style="margin-top:0">Vão na nota os produtos do pedido. Taxa de serviço e de entrega ficam de fora.</p>' +
     '<label for="nf-pag">Como o cliente pagou</label><select id="nf-pag">' + (pad0 ? '' : '<option value="">Escolha…</option>') + FORMAS.map(f => '<option value="' + f[0] + '"' + (f[0] === pad0 ? ' selected' : '') + '>' + f[1] + '</option>').join('') + '</select>' +
     '<label for="nf-cpf">CPF na nota (opcional)</label><input id="nf-cpf" inputmode="numeric" maxlength="14" placeholder="000.000.000-00" autocomplete="off">' +
@@ -705,6 +706,7 @@ document.addEventListener('click', async e => {
     case 'sair': sair(); break;
     case 'aba': S.aba = el.dataset.t; S.editId = null; S.formAberto = false; render(); window.scrollTo(0, 0); break;
     case 'kf': S.kf = el.dataset.k; renderPedidos(); break;
+    case 'ver-hoje': S.aba = 'hist'; S.hp = 'hoje'; S.hn = 25; render(); window.scrollTo(0, 0); break;
     case 'hp': S.hp = el.dataset.p; S.hn = 25; S.premAberta = !!($('#prem') && $('#prem').open); render(); break;
     case 'hc': S.hc = el.dataset.c; S.hn = 25; carregarHist(); break;
     case 'hmore': S.hn += 25; carregarHist(); break;

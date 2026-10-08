@@ -3,6 +3,7 @@
    Imprime por uma "folha" invisível na própria página, sem programa extra. */
 (function (w) {
   'use strict';
+const N = n => String(n == null ? '' : n).padStart(3, '0'); // número do pedido do dia: 001, 002…
   const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const brl = v => (+v || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
   const pad = n => String(n).padStart(2, '0');
@@ -15,7 +16,7 @@
     const g = p.pagamento || {};
     const linha = (a, b, cls) => '<div class="l' + (cls ? ' ' + cls : '') + '"><span>' + a + '</span><span>' + b + '</span></div>';
     const e = p.entrega;
-    return '<!doctype html><html><head><meta charset="utf-8"><title>Pedido ' + p.numero + '</title><style>' +
+    return '<!doctype html><html><head><meta charset="utf-8"><title>Pedido ' + N(p.numero) + '</title><style>' +
       '@page{size:' + mm + 'mm auto;margin:0}*{box-sizing:border-box}html,body{margin:0;padding:0;background:#fff;color:#000}' +
       'body{width:' + mm + 'mm;padding:3mm ' + (mm === 58 ? 2 : 4) + 'mm 6mm;font:' + fonte + 'px/1.35 "Courier New",ui-monospace,monospace}' +
       'h1{font-size:' + (fonte + 3) + 'px;margin:0;text-align:center}.c{text-align:center}.big{font-size:' + (fonte + 9) + 'px;font-weight:700;text-align:center;margin:2mm 0}' +
@@ -24,7 +25,7 @@
       '.tot{font-weight:700;font-size:' + (fonte + 2) + 'px}.obs{border:1px solid #000;padding:1mm;margin-top:1.5mm;font-weight:700}' +
       '</style></head><body>' +
       '<h1>' + esc(rest && rest.nome) + '</h1><div class="c">' + quando + '</div>' +
-      '<div class="big">PEDIDO #' + p.numero + '</div><div class="tag">' + tipo + (p.origem === 'totem' ? ' · TOTEM · ' + (p.consumo === 'viagem' ? 'PARA LEVAR' : 'COMER AQUI') : '') + '</div>' +
+      '<div class="big">PEDIDO #' + N(p.numero) + '</div><div class="tag">' + tipo + (p.origem === 'totem' ? ' · TOTEM · ' + (p.consumo === 'viagem' ? 'PARA LEVAR' : 'COMER AQUI') : '') + '</div>' +
       (p.agendadoPara ? '<div class="tag">AGENDADO PARA ' + new Date(p.agendadoPara).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) + '</div>' : '') +
       '<div>Cliente: <b>' + esc(p.cliente && p.cliente.nome) + '</b></div>' + (p.cliente && p.cliente.tel ? '<div>Tel: ' + esc(p.cliente.tel) + '</div>' : '') +
       (e ? '<div>End.: <b>' + esc(e.endereco) + (e.complemento ? ', ' + esc(e.complemento) : '') + '</b></div><div>Bairro: ' + esc(e.bairro) + (e.km != null ? ' · ' + String(e.km).replace('.', ',') + ' km' : '') + '</div>' + (e.referencia ? '<div>Ref.: ' + esc(e.referencia) + '</div>' : '') : '') +

@@ -1,6 +1,6 @@
 /* Cardápio do salão: barra lateral de categorias, pratos no meio e o pedido à direita (no celular, o pedido abre por baixo) */
 :root{
-  --cor:#D23F3F; --fundo:#FBF7F6; --papel:#FFFFFF; --tinta:#1D2142; --suave:#6B6F86; --linha:#ECE6E6; --chip:#F6EEEE; --ouro:#F2B42C; --ok:#1F8A4C; --ok-bg:#E3F4EA; --aviso-bg:#FBEEDC; --aviso:#8A4B00;
+  --cor:#E30613; --fundo:#FBF7F6; --papel:#FFFFFF; --tinta:#1D2142; --suave:#6B6F86; --linha:#ECE6E6; --chip:#F6EEEE; --ouro:#F2B42C; --ok:#1F8A4C; --ok-bg:#E3F4EA; --aviso-bg:#FBEEDC; --aviso:#8A4B00;
   --topo:68px; --sombra:0 2px 10px rgb(29 33 66 / .07);
 }
 @media (prefers-color-scheme: dark){

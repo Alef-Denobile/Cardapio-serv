@@ -1,5 +1,5 @@
 /* Modo totem: autoatendimento com tela de toque (tablet deitado, em pé ou totem de chão) */
-:root{ --cor:#D23F3F; --fundo:#FBF7F6; --papel:#FFFFFF; --tinta:#1D2142; --suave:#6B6F86; --linha:#ECE3E0; --ouro:#F2B33D; --ok:#1F8A4C; --raio:22px; }
+:root{ --cor:#E30613; --fundo:#FBF7F6; --papel:#FFFFFF; --tinta:#1D2142; --suave:#6B6F86; --linha:#ECE3E0; --ouro:#F2B33D; --ok:#1F8A4C; --raio:22px; }
 *{ box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
 html,body{ margin:0; height:100%; background:var(--fundo); color:var(--tinta); font-family:Nunito, system-ui, sans-serif; user-select:none; -webkit-user-select:none; overscroll-behavior:none; }
 button{ font:inherit; color:inherit; cursor:pointer; touch-action:manipulation; }

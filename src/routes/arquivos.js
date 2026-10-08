@@ -49,7 +49,7 @@ r.get('/nfce/demo/:id', rota(async (req, res) => {
     '<div class="c">NFC-e nº ' + (n.numero || '') + ' Série ' + (n.serie || 1) + ' – ' + new Date(n.criado_em).toLocaleString('pt-BR', { timeZone: rest.fuso }) + '</div>' +
     '<div class="c"><small>Chave de acesso</small><br>' + esc(chave) + '</div>' +
     '<div class="c" style="margin-top:6px">' + (n.cpf ? 'CONSUMIDOR CPF ' + esc(n.cpf.replace(/^(\d{3})(\d{3})(\d{3})(\d{2})$/, '$1.$2.$3-$4')) : 'CONSUMIDOR NÃO IDENTIFICADO') + '</div>' +
-    '<div class="c" style="margin-top:6px">Pedido #' + p.numero + ' · ' + esc(rest.nome) + '</div></div></body></html>');
+    '<div class="c" style="margin-top:6px">Pedido #' + String(p.numero).padStart(3, '0') + ' · ' + esc(rest.nome) + '</div></div></body></html>');
 }));
 
 module.exports = r;

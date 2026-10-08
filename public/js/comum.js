@@ -12,7 +12,7 @@
   function initials(n){ return String(n || '?').split(/\s+/).filter(Boolean).slice(0, 2).map(x => x[0]).join('').toUpperCase(); }
   function toast(t){ const el = $('#toast'); if (!el) return; el.textContent = t; el.hidden = false; clearTimeout(toast.t); toast.t = setTimeout(() => { el.hidden = true; }, 3000); }
   function lum(hex){ const m = /^#?([0-9a-f]{6})$/i.exec(hex || ''); if (!m) return 0; const n = parseInt(m[1], 16); const c = [n >> 16, (n >> 8) & 255, n & 255].map(v => { v /= 255; return v <= .03928 ? v / 12.92 : Math.pow((v + .055) / 1.055, 2.4); }); return .2126 * c[0] + .7152 * c[1] + .0722 * c[2]; }
-  function aplicarCor(cor){ const b = /^#[0-9a-f]{6}$/i.test(cor || '') ? cor : '#D23F3F'; const st = document.documentElement.style; st.setProperty('--brand', b); st.setProperty('--brand-ink', lum(b) > .4 ? '#141816' : '#FFFFFF'); }
+  function aplicarCor(cor){ const b = /^#[0-9a-f]{6}$/i.test(cor || '') ? cor : '#E30613'; const st = document.documentElement.style; st.setProperty('--brand', b); st.setProperty('--brand-ink', lum(b) > .4 ? '#141816' : '#FFFFFF'); }
   const ICONES = [
     '<path d="M8 22h32l-3 13a5 5 0 0 1-5 4H16a5 5 0 0 1-5-4z"/><path d="M17 22l6-11M31 22l-6-11"/>',
     '<circle cx="27" cy="25" r="12"/><circle cx="27" cy="25" r="6.5"/><path d="M9 11v27M6.5 11v7a2.5 2.5 0 0 0 5 0v-7"/>',

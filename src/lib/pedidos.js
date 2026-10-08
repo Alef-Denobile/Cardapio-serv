@@ -90,7 +90,9 @@ async function montarPedido(c, rest, corpo) {
 
   const cliente = { nome: texto(corpo.cliente && corpo.cliente.nome, 60) || 'Cliente', tel: texto(corpo.cliente && corpo.cliente.tel, 20) };
   let entrega = null, taxaEntrega = 0;
-  if (totem) { if (cliente.nome === 'Cliente' || cliente.nome.length < 2) throw new ErroApp(400, 'Diga seu nome para chamarmos quando o pedido ficar pronto.'); }
+  // Pedido feito no próprio restaurante (totem ou menu do salão, para retirar no balcão): basta o nome
+  const salao = !totem && tipo === 'retirada' && corpo.local === true;
+  if (totem || salao) { if (cliente.nome === 'Cliente' || cliente.nome.length < 2) throw new ErroApp(400, 'Diga seu nome para chamarmos quando o pedido ficar pronto.'); }
   else if (tipo !== 'mesa' && cliente.tel.replace(/\D/g, '').length < 10) throw new ErroApp(400, 'Informe seu WhatsApp com DDD para o restaurante falar com você.');
   if (tipo === 'delivery') {
     const e = corpo.entrega || {};
@@ -135,7 +137,7 @@ async function montarPedido(c, rest, corpo) {
   }
 
   return { status: PAGO_NO_SITE.includes(metodo) ? 'aguardando' : 'novo', tipo, mesa, cliente, entrega, linhas, obs: texto(corpo.obs, 300), subtotal, servico, taxaEntrega, total, pagamento: { metodo, troco },
-    agendadoPara, origem: totem ? 'totem' : tipo === 'mesa' ? 'mesa' : 'site', consumo: totem ? (corpo.consumo === 'viagem' ? 'viagem' : 'local') : null };
+    agendadoPara: salao ? null : agendadoPara, origem: totem ? 'totem' : salao ? 'salao' : tipo === 'mesa' ? 'mesa' : 'site', consumo: totem ? (corpo.consumo === 'viagem' ? 'viagem' : 'local') : null };
 }
 
 module.exports = { montarPedido, METODOS, PAGO_NO_SITE, metodosPermitidos, tiposPermitidos };
