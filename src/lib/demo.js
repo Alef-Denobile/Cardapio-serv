@@ -16,39 +16,19 @@ const BORDA = { nome: 'Borda', tipo: 'um', escolhas: [{ nome: 'Tradicional', pre
 const PONTO = { nome: 'Ponto da carne', tipo: 'um', escolhas: [{ nome: 'Ao ponto', preco: 0 }, { nome: 'Mal passado', preco: 0 }, { nome: 'Bem passado', preco: 0 }] };
 const ADIC_BURGER = { nome: 'Adicionais', tipo: 'varios', escolhas: [{ nome: 'Bacon extra', preco: 6 }, { nome: 'Cheddar extra', preco: 5 }, { nome: 'Ovo', preco: 3 }] };
 const SABOR_SUCO = { nome: 'Sabor', tipo: 'um', escolhas: [{ nome: 'Laranja', preco: 0 }, { nome: 'Limão', preco: 0 }, { nome: 'Maracujá', preco: 0 }] };
-const CATEGORIAS = ['Pizzas', 'Massas', 'Hambúrgueres', 'Batatas e porções', 'Mexicanos', 'Pratos leves', 'Sopas', 'Café e padaria', 'Sobremesas', 'Bebidas'];
+const CATEGORIAS = ['Hambúrgueres', 'Bebidas', 'Sobremesas'];
 const MOLHO = { nome: 'Molho', tipo: 'um', escolhas: [{ nome: 'Bolonhesa', preco: 0 }, { nome: 'Branco', preco: 0 }, { nome: 'Sugo', preco: 0 }, { nome: 'Quatro queijos', preco: 6 }] };
 // [categoria, nome, descrição, preço, foto, destaque, selos, opções]
 const PRATOS = [
-  ['Pizzas', 'Pizza de pepperoni', 'Pepperoni, mussarela e orégano na massa de fermentação natural', 52, 'pepperoni', true, [], [TAMANHO, BORDA]],
-  ['Pizzas', 'Pizza margherita', 'Tomate-cereja, mussarela de búfala e manjericão fresco', 49, 'pizza', true, ['vegetariano'], [TAMANHO, BORDA]],
-  ['Pizzas', 'Pizza quatro queijos', 'Mussarela, provolone, gorgonzola e parmesão', 56, 'queijos', false, ['vegetariano'], [TAMANHO, BORDA]],
-  ['Pizzas', 'Pizza especial da casa', 'Calabresa artesanal, cebola roxa e azeitonas', 54, 'https://images.unsplash.com/photo-1604382354936-07c5d9983bd3?w=800&q=80&auto=format&fit=crop', false, [], [TAMANHO, BORDA]],
-  ['Massas', 'Espaguete à bolonhesa', 'Massa fresca com molho de carne cozido lentamente', 42, 'https://images.unsplash.com/photo-1622973536968-3ead9e780960?w=800&q=80&auto=format&fit=crop', false, [], []],
-  ['Massas', 'Penne ao molho branco', 'Com frango desfiado e champignon', 39, 'https://images.unsplash.com/photo-1555949258-eb67b1ef0ceb?w=800&q=80&auto=format&fit=crop', false, [], []],
-  ['Massas', 'Lasanha da casa', 'Camadas de massa, carne, presunto, queijo e molho de tomate', 46, 'https://images.unsplash.com/photo-1574894709920-11b28e7367e3?w=800&q=80&auto=format&fit=crop', false, [], []],
-  ['Massas', 'Nhoque de batata', 'Feito na casa, com o molho que você escolher', 38, 'https://images.unsplash.com/photo-1778837224436-82a8f1fa8bb1?w=800&q=80&auto=format&fit=crop', false, ['vegetariano'], [MOLHO]],
   ['Hambúrgueres', 'Hambúrguer duplo', 'Dois blends de 150 g, cheddar, bacon e cebola caramelizada', 39, 'burger', true, [], [PONTO, ADIC_BURGER]],
   ['Hambúrgueres', 'Cheeseburger clássico', 'Blend de 160 g, queijo prato, alface e tomate', 29, 'https://images.unsplash.com/photo-1568901346375-23c9450c58cd?w=800&q=80&auto=format&fit=crop', false, [], [PONTO, ADIC_BURGER]],
   ['Hambúrgueres', 'Burger de frango crocante', 'Filé empanado, maionese de ervas e alface americana', 31, 'https://images.unsplash.com/photo-1637710847214-f91d99669e18?w=800&q=80&auto=format&fit=crop', false, [], [ADIC_BURGER]],
+  ['Hambúrgueres', 'Smash burger duplo', 'Dois smash de 90 g, queijo americano e molho da casa no pão brioche', 34, 'https://images.unsplash.com/photo-1572802419224-296b0aeee0d9?w=800&q=80&auto=format&fit=crop', false, [], [PONTO, ADIC_BURGER]],
+  ['Hambúrgueres', 'Burger picles e cebola', 'Blend de 160 g, cheddar, picles e cebola crispy', 33, 'https://images.unsplash.com/photo-1607013251379-e6eecfffe234?w=800&q=80&auto=format&fit=crop', false, [], [PONTO, ADIC_BURGER]],
   ['Hambúrgueres', 'Burger vegetariano', 'Hambúrguer de grão-de-bico, queijo e tomate assado', 30, 'https://images.unsplash.com/photo-1520072959219-c595dc870360?w=800&q=80&auto=format&fit=crop', false, ['vegetariano'], []],
-  ['Batatas e porções', 'Batata rústica', 'Com páprica e maionese da casa', 18, 'https://images.unsplash.com/photo-1633959639799-6d3f66e05710?w=800&q=80&auto=format&fit=crop', false, ['vegano'], []],
-  ['Batatas e porções', 'Batata frita tradicional', 'Porção de 300 g, crocante e sequinha', 16, 'https://images.unsplash.com/photo-1598679253544-2c97992403ea?w=800&q=80&auto=format&fit=crop', false, ['vegano'], []],
-  ['Batatas e porções', 'Batata com cheddar e bacon', 'Porção de 300 g coberta de cheddar cremoso e bacon', 26, 'https://images.unsplash.com/photo-1639744210631-209fce3e256c?w=800&q=80&auto=format&fit=crop', false, [], []],
-  ['Batatas e porções', 'Batata-doce frita', 'Porção de 300 g com sal de ervas', 19, 'https://images.unsplash.com/photo-1745792714512-77cffdb16020?w=800&q=80&auto=format&fit=crop', false, ['vegano', 'sem glúten'], []],
-  ['Mexicanos', 'Tacos de camarão', 'Três tacos com abacate e molho chipotle', 48, 'tacos', true, [], []],
-  ['Mexicanos', 'Nachos com guacamole', 'Porção para dividir, com sour cream', 34, 'https://images.unsplash.com/photo-1523634700860-90d0ef74f137?w=800&q=80&auto=format&fit=crop', false, ['vegetariano'], []],
-  ['Mexicanos', 'Burrito de carne', 'Carne desfiada, feijão, arroz e queijo', 36, 'https://images.unsplash.com/photo-1711488735428-27c6757beb5c?w=800&q=80&auto=format&fit=crop', false, [], []],
-  ['Pratos leves', 'Bowl de frango e grãos', 'Frango grelhado, arroz, feijão, milho e legumes', 36, 'https://images.unsplash.com/photo-1762631383378-115f2d4cbe07?w=800&q=80&auto=format&fit=crop', false, ['sem glúten'], []],
-  ['Pratos leves', 'Salada da estação', 'Folhas, frutas da época, castanhas e vinagrete de mel', 28, 'https://images.unsplash.com/photo-1623489254660-db5b367881d9?w=800&q=80&auto=format&fit=crop', false, ['vegetariano', 'sem glúten'], []],
-  ['Sopas', 'Sopa de abóbora', 'Com creme de leite e ervas frescas', 26, 'sopa', false, ['vegetariano'], []],
-  ['Sopas', 'Caldo verde', 'Couve, batata e linguiça', 24, 'https://images.unsplash.com/photo-1600041974426-c62f5a7eddb3?w=800&q=80&auto=format&fit=crop', false, ['sem glúten'], []],
-  ['Café e padaria', 'Café completo', 'Café coado, pão na chapa, ovos mexidos e frutas', 22, 'cafe', false, ['vegetariano'], []],
-  ['Café e padaria', 'Pão de queijo (6 un.)', 'Assado na hora', 12, 'https://images.unsplash.com/photo-1784217066854-f2d84aa49532?w=800&q=80&auto=format&fit=crop', false, ['vegetariano', 'sem glúten'], []],
   ['Sobremesas', 'Casquinha de chocolate', 'Sorvete artesanal de chocolate belga na casquinha crocante', 16, 'sorvete', true, ['vegetariano'], []],
   ['Sobremesas', 'Brownie com sorvete', 'Brownie quente com bola de creme', 22, 'https://images.unsplash.com/photo-1606884285898-277317a7bf12?w=800&q=80&auto=format&fit=crop', false, ['vegetariano'], []],
   ['Sobremesas', 'Pudim de leite', 'Receita da vó, com calda de caramelo', 14, 'https://images.unsplash.com/photo-1780798465831-de1e4d58ee46?w=800&q=80&auto=format&fit=crop', false, ['vegetariano', 'sem glúten'], []],
-  ['Batatas e porções', 'Anéis de cebola', 'Porção crocante com molho barbecue', 22, 'https://images.unsplash.com/photo-1639024471283-03518883512d?w=800&q=80&auto=format&fit=crop', false, ['vegetariano'], []],
   ['Sobremesas', 'Açaí na tigela 500 ml', 'Com banana, morango e granola', 24, 'https://images.unsplash.com/photo-1627308594190-a057cd4bfac8?w=800&q=80&auto=format&fit=crop', false, ['vegano'], []],
   ['Bebidas', 'Milkshake de morango', '400 ml, com chantilly', 18, 'https://images.unsplash.com/photo-1579954115545-a95591f28bfc?w=800&q=80&auto=format&fit=crop', false, ['vegetariano'], []],
   ['Bebidas', 'Limonada suíça', '500 ml, batida com leite condensado', 11, 'https://images.unsplash.com/photo-1623084921164-4a8c5c37a912?w=800&q=80&auto=format&fit=crop', false, ['vegetariano'], []],
@@ -59,32 +39,29 @@ const PRATOS = [
 ];
 
 // "Peça também": o que o restaurante sugere no carrinho
-const SUGERIR = ['Refrigerante lata', 'Batata frita tradicional', 'Brownie com sorvete', 'Suco natural 500 ml', 'Casquinha de chocolate'];
+const SUGERIR = ['Refrigerante lata', 'Brownie com sorvete', 'Suco natural 500 ml', 'Casquinha de chocolate', 'Milkshake de morango'];
 // Estoque de exemplo: [nome, unidade, estoque, mínimo, custo por unidade]
 const INSUMOS = [
-  ['Massa de pizza', 'un', 60, 10, 2.5], ['Mussarela', 'kg', 12, 2, 38], ['Molho de tomate', 'kg', 8, 1.5, 14], ['Pepperoni', 'kg', 3, 0.5, 68],
-  ['Calabresa', 'kg', 4, 0.8, 32], ['Gorgonzola', 'kg', 0.25, 0.3, 96], ['Pão de hambúrguer', 'un', 80, 15, 1.4], ['Blend bovino 150 g', 'un', 70, 15, 6.2],
-  ['Queijo cheddar', 'kg', 3, 0.5, 52], ['Bacon', 'kg', 4, 0.8, 45], ['Batata', 'kg', 25, 5, 6.5], ['Massa fresca', 'kg', 10, 2, 18],
-  ['Carne moída', 'kg', 8, 2, 36], ['Frango', 'kg', 10, 2, 22], ['Camarão', 'kg', 2.5, 0.5, 89], ['Tortilla', 'un', 60, 12, 0.9],
-  ['Refrigerante lata', 'un', 96, 24, 3.1], ['Água mineral', 'un', 60, 12, 1.2], ['Laranja', 'kg', 15, 3, 4.5], ['Sorvete de creme', 'l', 6, 1.5, 22],
-  ['Chocolate', 'kg', 2, 0.5, 48], ['Leite condensado', 'un', 0, 4, 7.9]
+  ['Pão de hambúrguer', 'un', 80, 15, 1.4], ['Pão brioche', 'un', 40, 10, 2.2], ['Blend bovino 150 g', 'un', 70, 15, 6.2], ['Smash 90 g', 'un', 60, 12, 3.6],
+  ['Queijo cheddar', 'kg', 3, 0.5, 52], ['Bacon', 'kg', 0.6, 0.8, 45], ['Frango', 'kg', 10, 2, 22], ['Hambúrguer de grão-de-bico', 'un', 20, 5, 3.8],
+  ['Refrigerante lata', 'un', 96, 24, 3.1], ['Água mineral', 'un', 60, 12, 1.2], ['Laranja', 'kg', 15, 3, 4.5], ['Limão', 'kg', 6, 1, 6],
+  ['Leite', 'l', 12, 3, 5.2], ['Morango', 'kg', 3, 0.5, 18], ['Sorvete de creme', 'l', 6, 1.5, 22], ['Chocolate', 'kg', 2, 0.5, 48],
+  ['Açaí', 'kg', 5, 1, 24], ['Leite condensado', 'un', 0, 4, 7.9]
 ];
 // Ficha técnica: prato -> [[insumo, quantidade por unidade vendida]]
 const FICHAS = {
-  'Pizza de pepperoni': [['Massa de pizza', 1], ['Mussarela', 0.25], ['Molho de tomate', 0.12], ['Pepperoni', 0.09]],
-  'Pizza margherita': [['Massa de pizza', 1], ['Mussarela', 0.28], ['Molho de tomate', 0.15]],
-  'Pizza quatro queijos': [['Massa de pizza', 1], ['Mussarela', 0.2], ['Gorgonzola', 0.08], ['Molho de tomate', 0.1]],
-  'Pizza especial da casa': [['Massa de pizza', 1], ['Mussarela', 0.22], ['Calabresa', 0.12], ['Molho de tomate', 0.12]],
-  'Espaguete à bolonhesa': [['Massa fresca', 0.18], ['Carne moída', 0.15], ['Molho de tomate', 0.12]],
-  'Lasanha da casa': [['Massa fresca', 0.15], ['Carne moída', 0.15], ['Mussarela', 0.1], ['Molho de tomate', 0.15]],
   'Hambúrguer duplo': [['Pão de hambúrguer', 1], ['Blend bovino 150 g', 2], ['Queijo cheddar', 0.04], ['Bacon', 0.04]],
   'Cheeseburger clássico': [['Pão de hambúrguer', 1], ['Blend bovino 150 g', 1], ['Queijo cheddar', 0.03]],
+  'Smash burger duplo': [['Pão brioche', 1], ['Smash 90 g', 2], ['Queijo cheddar', 0.03]],
+  'Burger picles e cebola': [['Pão de hambúrguer', 1], ['Blend bovino 150 g', 1], ['Queijo cheddar', 0.03]],
   'Burger de frango crocante': [['Pão de hambúrguer', 1], ['Frango', 0.15]],
-  'Batata frita tradicional': [['Batata', 0.35]], 'Batata rústica': [['Batata', 0.4]], 'Batata com cheddar e bacon': [['Batata', 0.35], ['Queijo cheddar', 0.06], ['Bacon', 0.05]],
-  'Tacos de camarão': [['Tortilla', 3], ['Camarão', 0.15]], 'Burrito de carne': [['Tortilla', 1], ['Carne moída', 0.15]],
-  'Bowl de frango e grãos': [['Frango', 0.18]], 'Refrigerante lata': [['Refrigerante lata', 1]], 'Água mineral 500 ml': [['Água mineral', 1]],
-  'Suco natural 500 ml': [['Laranja', 0.6]], 'Casquinha de chocolate': [['Sorvete de creme', 0.12], ['Chocolate', 0.01]],
-  'Brownie com sorvete': [['Chocolate', 0.06], ['Sorvete de creme', 0.1]], 'Pudim de leite': [['Leite condensado', 0.25]]
+  'Burger vegetariano': [['Pão de hambúrguer', 1], ['Hambúrguer de grão-de-bico', 1]],
+  'Refrigerante lata': [['Refrigerante lata', 1]], 'Água mineral 500 ml': [['Água mineral', 1]],
+  'Suco natural 500 ml': [['Laranja', 0.6]], 'Limonada suíça': [['Limão', 0.15], ['Leite', 0.1]],
+  'Milkshake de morango': [['Leite', 0.25], ['Sorvete de creme', 0.15], ['Morango', 0.08]],
+  'Casquinha de chocolate': [['Sorvete de creme', 0.12], ['Chocolate', 0.01]],
+  'Brownie com sorvete': [['Chocolate', 0.06], ['Sorvete de creme', 0.1]], 'Pudim de leite': [['Leite condensado', 0.25]],
+  'Açaí na tigela 500 ml': [['Açaí', 0.4], ['Morango', 0.05]]
 };
 async function criarEstoque(c, rest, produtos) {
   const ids = {};
@@ -145,11 +122,11 @@ async function gerarHistorico(c, rest, produtos) {
 // Avaliações de exemplo em pedidos entregues (sem conta de cliente, como no uso real)
 const AVALIACOES = [
   ['Juliana Rocha', 5, 'Chegou quentinho e muito bem embalado. Peço de novo com certeza!'],
-  ['Marcos Teixeira', 5, 'A pizza de pepperoni é a melhor da cidade. Massa leve e bem recheada.'],
+  ['Marcos Teixeira', 5, 'O hambúrguer duplo é o melhor da cidade. Suculento e bem servido.'],
   ['Patrícia Lima', 4, 'Hambúrguer suculento e porção generosa. Só demorou um pouquinho.'],
   ['Rafael Souza', 5, 'Atendimento rápido e comida caprichada. Virou o nosso preferido.'],
   ['Camila Nunes', 5, 'Pedi pela mesa com o QR Code e chegou certinho, sem erro nenhum.'],
-  ['Thiago Alves', 4, 'Os tacos de camarão são ótimos. Preço justo e qualidade excelente.']
+  ['Thiago Alves', 4, 'O milkshake de morango é ótimo. Preço justo e qualidade excelente.']
 ];
 async function avaliar(c, rest) {
   const ids = (await c.query("SELECT id FROM pedidos WHERE restaurante_id = $1 AND status = 'entregue' AND tipo = 'delivery' ORDER BY criado_em DESC LIMIT $2", [rest.id, AVALIACOES.length])).rows;
@@ -171,8 +148,8 @@ async function criarDemo(c, { reset = false, historico = false } = {}) {
   await c.query('DELETE FROM usuarios WHERE email = ANY($1)', [Object.values(EMAILS)]);
   const { rest } = await criarRestaurante(c, {
     nome: 'Sabor da Casa', slug: SLUG, email: EMAILS.dono, senha: SENHA, nomeDono: 'Dona Lúcia', mesas: 12,
-    extras: { frase: 'Pizzas, lanches e pratos do dia, feitos na hora', sobre: 'Cozinha de bairro com cardápio para a família toda: pizzas de fermentação natural, hambúrgueres artesanais, pratos leves e sobremesas.',
-      capaUrl: F('pizza'), cor: '#D23F3F', abre: '11:00', fecha: '23:30', aceitarForaDoHorario: true, taxaServico: 10, chavePix: 'pix@sabordacasa.com', whatsapp: '(15) 99999-0000',
+    extras: { frase: 'Hambúrgueres artesanais, bebidas e sobremesas', sobre: 'Hamburgueria de bairro: blends grelhados na hora, pão brioche, milkshakes e sobremesas para fechar com chave de ouro.',
+      capaUrl: F('burger'), cor: '#D23F3F', abre: '11:00', fecha: '23:30', aceitarForaDoHorario: true, taxaServico: 10, chavePix: 'pix@sabordacasa.com', whatsapp: '(15) 99999-0000',
       categorias: CATEGORIAS,
       delivery: { ativo: true, tempo: '35–45 min', tempoRetirada: '20–30 min', pedidoMinimo: 30, gratisAcimaDe: 100,
         bairros: [{ nome: 'Centro', taxa: 6 }, { nome: 'Jardim América', taxa: 8 }, { nome: 'Vila Nova', taxa: 10 }, { nome: 'Campolim', taxa: 12 }],

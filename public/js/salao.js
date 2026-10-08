@@ -22,7 +22,7 @@ const rota = /^\/r\/([a-z0-9-]+)\/(?:mesa\/(\d+)|salao)\/?$/.exec(location.pathn
 const SLUG = rota[1] || '', MESA = rota[2] ? Math.trunc(+rota[2]) : 0, TOKEN = new URLSearchParams(location.search).get('t') || '';
 const CHAVE = 'salao:' + SLUG + ':' + MESA;
 let R = null, P = [];
-const S = { cat: null, q: '', cart: ler(CHAVE + ':cart', []), mesaOk: false, item: null, aberto: false, nome: ler('salao:nome', ''), obs: '', enviando: false,
+const S = { cat: null, q: '', cart: ler(CHAVE + ':cart', []), mesaOk: false, item: null, aberto: false, nome: ler('salao:nome', ''), tel: ler('salao:tel', ''), pag: 'local', obs: '', enviando: false,
   meus: ler(CHAVE + ':pedidos', []).filter(x => x && x.id && x.c && Date.now() - x.em < 8 * 3600000), pedidos: [], conta: null, contaF: { pag: 'cartao', pessoas: 1 }, contaOk: null, socket: null };
 const salvar = () => { gravar(CHAVE + ':cart', S.cart); gravar(CHAVE + ':pedidos', S.meus.slice(0, 15)); gravar('salao:nome', S.nome); };
 
@@ -33,8 +33,14 @@ const linhas = () => S.cart.map(l => ({ l, p: prod(l.id) })).filter(x => x.p && 
 const subtotal = () => linhas().reduce((a, x) => a + unit(x.p, x.l.sel) * x.l.q, 0);
 const qtd = id => S.cart.filter(l => id == null || l.id === id).reduce((a, l) => a + l.q, 0);
 const cats = () => (R.categorias || []).concat([...new Set(P.map(p => p.categoria))].filter(c => !(R.categorias || []).includes(c))).filter(c => P.some(p => p.categoria === c));
-const podePedir = () => S.mesaOk && (R.aberto || R.aceitarForaDoHorario);
+// Sem QR de mesa (menu do salão), o pedido vai para retirar no balcão
+const balcao = () => !MESA && (R.tipos || []).includes('retirada');
+const podeAdd = () => S.mesaOk || balcao();
+const podePedir = () => podeAdd() && (R.aberto || R.aceitarForaDoHorario);
 const foto = (p, cls) => p.fotoUrl ? '<img class="' + cls + '" src="' + esc(p.fotoUrl) + '" alt="" loading="lazy">' : '<span class="' + cls + ' ph" aria-hidden="true">' + esc(p.nome[0]) + '</span>';
+const pagsBalcao = () => ((R.pagamentos && R.pagamentos.retirada) || ['local']).filter(m => m === 'local' || m === 'pix');
+const STATUS_B = { novo: 'Recebido pela cozinha', preparo: 'Em preparo', pronto: 'Pronto! Retire no balcão', entregue: 'Retirado', cancelado: 'Cancelado' };
+const stTxt = p => (p.tipo === 'retirada' ? STATUS_B[p.status] : STATUS[p.status]) || p.status;
 const STATUS = { aguardando: 'Aguardando', novo: 'Recebido pela cozinha', preparo: 'Em preparo', pronto: 'Pronto, já vai para a mesa', rota: 'A caminho', entregue: 'Servido', cancelado: 'Cancelado' };
 const ICO = {
   garcom: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 17h16"/><path d="M6 17a6 6 0 0 1 12 0"/><path d="M12 8V6"/><path d="M10 6h4"/></svg>',
@@ -49,11 +55,12 @@ function renderTopo(){
   const chamados = S.mesaOk && R.recursos.chamados !== false;
   $('#topo').innerHTML = '<div class="sl-marca">' + logo + '<div><strong>' + esc(R.nome) + '</strong><span>' + (MESA && S.mesaOk ? 'Mesa ' + pad(MESA) : 'Cardápio') + ' · ' + (R.aberto ? 'aberto até ' + esc(R.fecha) : 'fechado agora') + '</span></div></div>' +
     '<label class="sl-busca"><span class="sr">Buscar no cardápio</span>' + ICO.busca + '<input id="busca" type="search" placeholder="Buscar prato" value="' + esc(S.q) + '" autocomplete="off"></label>' +
-    (S.mesaOk ? '<div class="sl-acoes">' + (chamados ? '<button class="sl-bt" data-act="garcom" id="bt-garcom">' + ICO.garcom + '<span>Chamar garçom</span></button><button class="sl-bt" data-act="conta">' + ICO.conta + '<span>Conta</span></button>' : '') +
+    (podeAdd() ? '<div class="sl-acoes">' + (chamados ? '<button class="sl-bt" data-act="garcom" id="bt-garcom">' + ICO.garcom + '<span>Chamar garçom</span></button><button class="sl-bt" data-act="conta">' + ICO.conta + '<span>Conta</span></button>' : '') +
       '<button class="sl-bt sl-bt-carr" data-act="abrir-carr" id="bt-carr" aria-label="Abrir o carrinho">' + ICO.carr + '<span class="sl-cn" id="carr-n" hidden></span></button></div>' : '');
   let av = '';
   if (MESA && !S.mesaOk) av = 'Este QR Code não é válido ou foi trocado. Você pode ver o cardápio; para pedir, chame o garçom.';
-  else if (!MESA) av = 'Para pedir, aponte a câmera do celular para o QR Code da sua mesa.';
+  else if (!MESA && !balcao()) av = 'Para pedir, aponte a câmera do celular para o QR Code da sua mesa.';
+  else if (!MESA && podePedir()) av = 'Pedido para retirar no balcão. Está numa mesa? Use o QR Code dela para receber na mesa.';
   else if (!podePedir()) av = 'Estamos fechados agora. Os pedidos voltam às ' + R.abre + '.';
   $('#aviso').hidden = !av; $('#aviso').textContent = av;
 }
@@ -70,7 +77,7 @@ function itemHtml(p){
     '<span class="sl-txt"><strong>' + esc(p.nome) + '</strong><small>' + esc(p.descricao) + '</small>' +
     ((p.selos || []).length ? '<span class="sl-selos">' + p.selos.map(s => '<i>' + esc(s) + '</i>').join('') + '</span>' : '') + '</span></button>' +
     '<div class="sl-lado"><b>' + (extra ? '<em>a partir de</em>' : '') + brl(p.preco) + '</b>' +
-    (p.esgotado ? '<span class="sl-esg">Esgotado</span>' : S.mesaOk ? '<button class="sl-mais" data-add="' + p.id + '" aria-label="Adicionar ' + esc(p.nome) + '"><span aria-hidden="true">+</span> Adicionar' + (n ? '<span class="sl-n">' + n + '</span>' : '') + '</button>' : '') + '</div></article>';
+    (p.esgotado ? '<span class="sl-esg">Esgotado</span>' : podeAdd() ? '<button class="sl-mais" data-add="' + p.id + '" aria-label="Adicionar ' + esc(p.nome) + '"><span aria-hidden="true">+</span> Adicionar' + (n ? '<span class="sl-n">' + n + '</span>' : '') + '</button>' : '') + '</div></article>';
 }
 // Mostra só a categoria escolhida na barra lateral; com busca, mostra os resultados de todas
 function renderProds(){
@@ -96,27 +103,31 @@ function renderCarr(){
   const sug = ls.length ? Sugestoes.escolher(P, S.cart.map(l => l.id), 3) : [];
   const meus = S.pedidos.filter(p => S.meus.some(m => m.id === p.id));
   let h = '<div class="sl-carr-h"><h2>' + ICO.carr + 'Seu pedido</h2>' + (MESA && S.mesaOk ? '<span class="sl-tag">Mesa ' + pad(MESA) + '</span>' : '') + '<button class="sl-x" data-act="fechar-carr" aria-label="Fechar">×</button></div>';
-  if (!S.mesaOk) h += '<p class="sl-dica">' + (MESA ? 'Este QR Code não vale mais. Peça ao garçom para conferir.' : 'Este é o cardápio do salão. Para pedir pelo celular, use o QR Code da sua mesa.') + '</p>';
+  const B = !S.mesaOk && balcao(), servB = B ? 0 : serv;
+  if (!podeAdd()) h += '<p class="sl-dica">' + (MESA ? 'Este QR Code não vale mais. Peça ao garçom para conferir.' : 'Este é o cardápio do salão. Para pedir pelo celular, use o QR Code da sua mesa.') + '</p>';
   else if (!ls.length) h += '<p class="sl-dica">Toque no + dos pratos para montar o pedido. Ele vai direto para a cozinha.</p>';
   else {
     h += '<div class="sl-linhas">' + ls.map(x => { const ns = nomesSel(x.p, x.l.sel);
         return '<div class="sl-linha">' + foto(x.p, 'sl-th') + '<div class="sl-ln"><strong>' + esc(x.p.nome) + '</strong>' + (ns.length ? '<small>' + esc(ns.join(' · ')) + '</small>' : '') + '<b>' + brl(unit(x.p, x.l.sel) * x.l.q) + '</b></div>' +
           '<div class="sl-step"><button data-linha="' + esc(x.l.k) + '" data-d="-1" aria-label="Tirar um">−</button><span>' + x.l.q + '</span><button data-linha="' + esc(x.l.k) + '" data-d="1" aria-label="Mais um">+</button></div></div>'; }).join('') + '</div>' +
       (sug.length ? '<div class="sl-peca"><p>Peça também</p>' + sug.map(p => '<button class="sl-peca-i" data-add="' + p.id + '">' + foto(p, 'sl-pth') + '<span>' + esc(p.nome) + '<small>' + brl(p.preco) + '</small></span><i aria-hidden="true">+</i></button>').join('') + '</div>' : '') +
-      '<label class="sl-l" for="sl-nome">Seu nome <small>(opcional, ajuda o garçom)</small></label><input id="sl-nome" maxlength="40" value="' + esc(S.nome) + '" autocomplete="given-name">' +
+      (B ? '<label class="sl-l" for="sl-nome">Seu nome</label><input id="sl-nome" maxlength="40" value="' + esc(S.nome) + '" autocomplete="given-name" placeholder="Para chamarmos quando ficar pronto">' +
+          '<label class="sl-l" for="sl-tel">WhatsApp com DDD</label><input id="sl-tel" inputmode="tel" maxlength="20" value="' + esc(S.tel || '') + '" autocomplete="tel" placeholder="(15) 99999-0000">' +
+          '<p class="sl-l">Pagamento</p><div class="sl-seg">' + pagsBalcao().map(m => '<button data-bpag="' + m + '" aria-pressed="' + (S.pag === m) + '">' + (m === 'pix' ? 'Pix' : 'No caixa') + '</button>').join('') + '</div>'
+        : '<label class="sl-l" for="sl-nome">Seu nome <small>(opcional, ajuda o garçom)</small></label><input id="sl-nome" maxlength="40" value="' + esc(S.nome) + '" autocomplete="given-name">') +
       '<label class="sl-l" for="sl-obs">Observações</label><input id="sl-obs" maxlength="300" placeholder="Ex.: sem cebola" value="' + esc(S.obs) + '">' +
-      '<div class="sl-tot"><div><span>Subtotal</span><span>' + brl(sub) + '</span></div>' + (serv ? '<div><span>Serviço (' + R.taxaServico + '%)</span><span>' + brl(serv) + '</span></div>' : '') + '<div class="t"><span>Total</span><span>' + brl(sub + serv) + '</span></div></div>' +
-      '<button class="sl-enviar" data-act="enviar"' + (podePedir() && !S.enviando ? '' : ' disabled') + '>' + (S.enviando ? 'Enviando…' : 'Enviar para a cozinha') + '</button>' +
-      '<p class="sl-dica">Você paga no final, quando pedir a conta.</p>';
+      '<div class="sl-tot"><div><span>Subtotal</span><span>' + brl(sub) + '</span></div>' + (servB ? '<div><span>Serviço (' + R.taxaServico + '%)</span><span>' + brl(servB) + '</span></div>' : '') + '<div class="t"><span>Total</span><span>' + brl(sub + servB) + '</span></div></div>' +
+      '<button class="sl-enviar" data-act="enviar"' + (podePedir() && !S.enviando ? '' : ' disabled') + '>' + (S.enviando ? 'Enviando…' : B ? 'Enviar pedido · retirar no balcão' : 'Enviar para a cozinha') + '</button>' +
+      '<p class="sl-dica">' + (B ? (S.pag === 'pix' && R.chavePix ? 'Pague com Pix na chave ' + esc(R.chavePix) + ' e mostre no balcão. ' : 'Pague no caixa ao retirar. ') + 'Esta tela mostra quando ficar pronto.' : 'Você paga no final, quando pedir a conta.') + '</p>';
   }
-  if (meus.length) h += '<div class="sl-meus"><p>Pedidos desta mesa</p>' + meus.map(p => '<div class="sl-meu ' + p.status + '"><strong>#' + p.numero + '</strong><span>' + esc(STATUS[p.status] || p.status) + '</span><small>' + p.linhas.map(l => l.qtd + '× ' + esc(l.nome)).join(', ') + '</small></div>').join('') +
+  if (meus.length) h += '<div class="sl-meus"><p>' + (MESA ? 'Pedidos desta mesa' : 'Seus pedidos') + '</p>' + meus.map(p => '<div class="sl-meu ' + p.status + '"><strong>#' + p.numero + '</strong><span>' + esc(stTxt(p)) + '</span><small>' + p.linhas.map(l => l.qtd + '× ' + esc(l.nome)).join(', ') + '</small></div>').join('') +
     (S.mesaOk && R.recursos.chamados !== false ? '<button class="sl-sec-bt" data-act="conta">' + ICO.conta + 'Ver e pedir a conta</button>' : '') + '</div>';
   $('#carr').innerHTML = h;
   // barra de baixo (celular)
   const n = qtd(), ativo = meus.find(p => !['entregue', 'cancelado'].includes(p.status));
   $('#barra').hidden = !(n || ativo);
-  $('#barra').innerHTML = n ? '<button data-act="abrir-carr"><span>' + ICO.carr + n + (n > 1 ? ' itens' : ' item') + '</span><strong>Ver pedido · ' + brl(sub + serv) + '</strong></button>'
-    : ativo ? '<button data-act="abrir-carr" class="acomp"><span>Pedido #' + ativo.numero + '</span><strong>' + esc(STATUS[ativo.status]) + '</strong></button>' : '';
+  $('#barra').innerHTML = n ? '<button data-act="abrir-carr"><span>' + ICO.carr + n + (n > 1 ? ' itens' : ' item') + '</span><strong>Ver pedido · ' + brl(sub + servB) + '</strong></button>'
+    : ativo ? '<button data-act="abrir-carr" class="acomp"><span>Pedido #' + ativo.numero + '</span><strong>' + esc(stTxt(ativo)) + '</strong></button>' : '';
   document.body.classList.toggle('carr-aberto', S.aberto);
   const cn = $('#carr-n'); if (cn){ cn.hidden = !n; cn.textContent = n; $('#bt-carr').setAttribute('aria-label', n ? 'Abrir o carrinho, ' + n + (n > 1 ? ' itens' : ' item') : 'Abrir o carrinho'); }
   $('#fundo').hidden = !S.aberto;
@@ -137,7 +148,7 @@ function desenharItem(){
     '<div class="sl-ib"><h2 id="it-n">' + esc(p.nome) + '</h2><p>' + esc(p.descricao) + '</p>' +
     (p.opcoes || []).map((o, oi) => '<fieldset><legend>' + esc(o.nome) + ' <small>' + (o.tipo === 'um' ? 'escolha 1' : 'opcional') + '</small></legend>' + o.escolhas.map((e, ei) =>
       '<button type="button" class="sl-op" data-op="' + oi + ':' + ei + '" aria-pressed="' + it.sel[oi].includes(ei) + '"><span>' + esc(e.nome) + '</span>' + (e.preco ? '<b>+ ' + brl(e.preco) + '</b>' : '') + '</button>').join('') + '</fieldset>').join('') +
-    (S.mesaOk ? '<div class="sl-if"><div class="sl-step g"><button data-iq="-1" aria-label="Menos">−</button><span>' + it.q + '</span><button data-iq="1" aria-label="Mais">+</button></div><button class="sl-enviar" data-act="por-item">Adicionar · ' + brl(unit(p, it.sel) * it.q) + '</button></div>' : '<p class="sl-dica">Para pedir, use o QR Code da sua mesa.</p>') +
+    (podeAdd() ? '<div class="sl-if"><div class="sl-step g"><button data-iq="-1" aria-label="Menos">−</button><span>' + it.q + '</span><button data-iq="1" aria-label="Mais">+</button></div><button class="sl-enviar" data-act="por-item">Adicionar · ' + brl(unit(p, it.sel) * it.q) + '</button></div>' : '<p class="sl-dica">Para pedir, use o QR Code da sua mesa.</p>') +
     '</div><button class="sl-x sl-x-m" data-act="fechar-modal" aria-label="Fechar">×</button></div></div>';
 }
 function fecharModal(){ $('#modal').innerHTML = ''; S.item = null; }
@@ -147,18 +158,24 @@ function colocar(id, sel, q){
   salvar(); atualizarItens(); toast((q > 1 ? q + '× ' : '') + p.nome + ' no carrinho');
   const b = $('#bt-carr'); if (b){ b.classList.remove('pulo'); void b.offsetWidth; b.classList.add('pulo'); }
 }
-function adicionar(id){ const p = prod(id); if (!p || p.esgotado || !S.mesaOk) return; if ((p.opcoes || []).length) abrirItem(id); else colocar(id, {}, 1); }
+function adicionar(id){ const p = prod(id); if (!p || p.esgotado || !podeAdd()) return; if ((p.opcoes || []).length) abrirItem(id); else colocar(id, {}, 1); }
 
 /* ---------- enviar, acompanhar ---------- */
 async function enviar(){
   const ls = linhas(); if (!ls.length || !podePedir()) return;
+  const B = !S.mesaOk && balcao();
+  if (B){
+    if ((S.nome || '').trim().length < 2){ toast('Diga seu nome para chamarmos quando ficar pronto.'); const i = $('#sl-nome'); if (i) i.focus(); return; }
+    if ((S.tel || '').replace(/\D/g, '').length < 10){ toast('Informe seu WhatsApp com DDD.'); const i = $('#sl-tel'); if (i) i.focus(); return; }
+  }
   S.enviando = true; renderCarr();
   try {
-    const d = await api('POST', '/api/r/' + encodeURIComponent(SLUG) + '/pedidos', { tipo: 'mesa', mesa: { numero: MESA, token: TOKEN }, cliente: { nome: S.nome || 'Mesa ' + pad(MESA) },
-      itens: ls.map(x => ({ produto: x.p.id, qtd: x.l.q, escolhas: x.l.sel })), obs: S.obs, pagamento: { metodo: 'local' } });
+    const corpo = B ? { tipo: 'retirada', cliente: { nome: S.nome.trim(), tel: S.tel }, pagamento: { metodo: pagsBalcao().includes(S.pag) ? S.pag : 'local' } }
+      : { tipo: 'mesa', mesa: { numero: MESA, token: TOKEN }, cliente: { nome: S.nome || 'Mesa ' + pad(MESA) }, pagamento: { metodo: 'local' } };
+    const d = await api('POST', '/api/r/' + encodeURIComponent(SLUG) + '/pedidos', Object.assign(corpo, { itens: ls.map(x => ({ produto: x.p.id, qtd: x.l.q, escolhas: x.l.sel })), obs: S.obs }));
     S.meus.unshift({ id: d.pedido.id, c: d.codigo, em: Date.now() }); S.pedidos.unshift(d.pedido);
     S.cart = []; S.obs = ''; S.enviando = false; salvar(); conectar(); atualizarItens();
-    toast('Pedido #' + d.pedido.numero + ' enviado para a cozinha!');
+    toast('Pedido #' + d.pedido.numero + (B ? ' enviado! Avisamos aqui quando ficar pronto.' : ' enviado para a cozinha!'));
   } catch (e) { S.enviando = false; renderCarr(); toast(e.message); if (e.status === 409) recarregar(); }
 }
 async function carregarPedidos(){
@@ -224,6 +241,7 @@ document.addEventListener('click', e => {
     if (o.tipo === 'um') S.item.sel[oi] = [ei]; else { const st = new Set(S.item.sel[oi]); st.has(ei) ? st.delete(ei) : st.add(ei); S.item.sel[oi] = [...st].sort((a, b) => a - b); }
     desenharItem(); return; }
   if (d.iq){ S.item.q = Math.max(1, Math.min(30, S.item.q + +d.iq)); desenharItem(); return; }
+  if (d.bpag){ S.pag = d.bpag; renderCarr(); return; }
   if (d.cpag){ S.contaF.pag = d.cpag; desenharConta(); return; }
   if (d.cpes){ S.contaF.pessoas = Math.max(1, Math.min(30, S.contaF.pessoas + +d.cpes)); desenharConta(); return; }
   switch (d.act){
@@ -241,6 +259,7 @@ document.addEventListener('input', e => {
   if (t.id === 'busca'){ S.q = t.value; renderProds(); marcarCat(S.cat); return; }
   if (t.id === 'sl-nome'){ S.nome = t.value; salvar(); return; }
   if (t.id === 'sl-obs'){ S.obs = t.value; }
+  if (t.id === 'sl-tel'){ S.tel = t.value; gravar('salao:tel', S.tel); }
 });
 document.addEventListener('keydown', e => { if (e.key === 'Escape'){ if ($('#modal').innerHTML) fecharModal(); else if (S.aberto){ S.aberto = false; renderCarr(); } } });
 document.addEventListener('error', e => { const img = e.target; if (!(img instanceof HTMLImageElement) || img.dataset.falhou) return; img.dataset.falhou = '1';
@@ -257,7 +276,7 @@ document.addEventListener('error', e => { const img = e.target; if (!(img instan
   document.title = R.nome + (MESA ? ' · Mesa ' + pad(MESA) : ' · Cardápio');
   if (/^#[0-9a-f]{6}$/i.test(R.cor || '')) document.documentElement.style.setProperty('--cor', R.cor);
   S.cart = S.cart.filter(l => l && l.k && prod(l.id) && !prod(l.id).esgotado);
-  if (!S.mesaOk) S.cart = [];
+  if (!podeAdd()) S.cart = [];
   render(); carregarPedidos(); conectar();
 })();
 })();
