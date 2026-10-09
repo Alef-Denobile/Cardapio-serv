@@ -162,20 +162,6 @@ r.post('/fotos', dono, express.raw({ type: ['image/jpeg', 'image/png', 'image/we
   res.status(201).json({ url: '/f/' + id });
 }));
 
-/* ---------- Modo totem ---------- */
-r.get('/totem', dono, comRecurso('totem'), rota(async (req, res) => {
-  const t = await noRest(req, async c => {
-    const atual = (await c.query('SELECT totem_token FROM restaurantes WHERE id = $1', [req.rid])).rows[0].totem_token;
-    if (atual) return atual;
-    return (await c.query('UPDATE restaurantes SET totem_token = $2 WHERE id = $1 RETURNING totem_token', [req.rid, tokenAleatorio(12)])).rows[0].totem_token;
-  });
-  res.json({ token: t });
-}));
-r.post('/totem/novo-codigo', dono, comRecurso('totem'), rota(async (req, res) => {
-  const t = await noRest(req, async c => (await c.query('UPDATE restaurantes SET totem_token = $2 WHERE id = $1 RETURNING totem_token', [req.rid, tokenAleatorio(12)])).rows[0].totem_token);
-  res.json({ token: t });
-}));
-
 /* ---------- Produtos ---------- */
 r.get('/produtos', equipe, rota(async (req, res) => {
   const out = await noRest(req, async c => {
@@ -229,26 +215,31 @@ r.put('/restaurante', dono, rota(async (req, res) => {
   res.json({ restaurante: paraDono(rest) });
 }));
 
-/* ---------- Mesas e QR Codes ---------- */
+/* ---------- Mesas, QR Codes e totem ----------
+   O dono vê os QR e o link do totem e pode adicionar mesas.
+   Trocar códigos e remover mesas fica na área de devs. */
 const listarMesas = async (c, rid) => (await c.query('SELECT numero, token FROM mesas WHERE restaurante_id = $1 ORDER BY numero', [rid])).rows;
-r.get('/mesas', dono, comRecurso('mesa'), rota(async (req, res) => {
-  res.json({ mesas: await noRest(req, c => listarMesas(c, req.rid)) });
+r.get('/mesas', dono, rota(async (req, res) => {
+  res.json({ mesas: recursosDe(req.rest).mesa ? await noRest(req, c => listarMesas(c, req.rid)) : [] });
 }));
 r.post('/mesas', dono, comRecurso('mesa'), rota(async (req, res) => {
   const q = Math.trunc(numero(req.body && req.body.quantidade, 0));
   if (q < 1 || q > 200) throw new ErroApp(400, 'Informe entre 1 e 200 mesas.');
   const mesas = await noRest(req, async c => {
     const existentes = new Set((await c.query('SELECT numero FROM mesas WHERE restaurante_id = $1', [req.rid])).rows.map(m => m.numero));
+    if (q < existentes.size) throw new ErroApp(400, 'Pelo painel dá para adicionar mesas. Para remover mesas, fale com o suporte.');
     for (let n = 1; n <= q; n++) if (!existentes.has(n)) await c.query('INSERT INTO mesas (restaurante_id, numero, token) VALUES ($1, $2, $3)', [req.rid, n, tokenAleatorio()]);
-    await c.query('DELETE FROM mesas WHERE restaurante_id = $1 AND numero > $2', [req.rid, q]);
     return listarMesas(c, req.rid);
   });
   res.json({ mesas });
 }));
-r.post('/mesas/:numero/novo-codigo', dono, comRecurso('mesa'), rota(async (req, res) => {
-  const m = await noRest(req, async c => (await c.query('UPDATE mesas SET token = $3 WHERE restaurante_id = $1 AND numero = $2 RETURNING numero, token', [req.rid, Math.trunc(numero(req.params.numero)), tokenAleatorio()])).rows[0]);
-  if (!m) throw new ErroApp(404, 'Mesa não encontrada.');
-  res.json({ mesa: m });
+r.get('/totem', dono, comRecurso('totem'), rota(async (req, res) => {
+  const t = await noRest(req, async c => {
+    const atual = (await c.query('SELECT totem_token FROM restaurantes WHERE id = $1', [req.rid])).rows[0].totem_token;
+    if (atual) return atual;
+    return (await c.query('UPDATE restaurantes SET totem_token = $2 WHERE id = $1 RETURNING totem_token', [req.rid, tokenAleatorio(12)])).rows[0].totem_token;
+  });
+  res.json({ token: t });
 }));
 
 /* ---------- Equipe ---------- */

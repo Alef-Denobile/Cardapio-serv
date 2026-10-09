@@ -9,7 +9,7 @@ const { assinarAdmin, exigirAdmin } = require('../middleware/admin');
 const { criarRestaurante } = require('../lib/criarRestaurante');
 const { limparProduto, limparConfig } = require('../lib/dados');
 const { RECURSOS, recursosDe } = require('../lib/recursos');
-const { ErroApp, rota, texto, numero, centavos, uuidValido } = require('../lib/util');
+const { ErroApp, rota, texto, numero, centavos, uuidValido, tokenAleatorio } = require('../lib/util');
 
 const r = express.Router();
 const limiteLogin = rateLimit({ windowMs: 15 * 60 * 1000, limit: 8, standardHeaders: true, legacyHeaders: false, message: { erro: 'Muitas tentativas de entrar. Aguarde 15 minutos.' } });
@@ -215,6 +215,49 @@ r.post('/restaurantes/:id/equipe/:uid/senha', rota(async (req, res) => {
     await registrar(c, req, rest, 'Senha redefinida', u.nome + ' · ' + u.email);
   });
   res.json({ ok: true });
+}));
+
+/* ---------- mesas, QR Codes e totem ---------- */
+const listarMesas = async (c, rid) => (await c.query('SELECT numero, token FROM mesas WHERE restaurante_id = $1 ORDER BY numero', [rid])).rows;
+async function tokenTotem(c, rest) {
+  const atual = (await c.query('SELECT totem_token FROM restaurantes WHERE id = $1', [rest.id])).rows[0].totem_token;
+  if (atual) return atual;
+  return (await c.query('UPDATE restaurantes SET totem_token = $2 WHERE id = $1 RETURNING totem_token', [rest.id, tokenAleatorio(12)])).rows[0].totem_token;
+}
+r.get('/restaurantes/:id/mesas', rota(async (req, res) => {
+  res.json(await sis(async c => { const rest = await restDe(c, req.params.id); return { mesas: await listarMesas(c, rest.id), totem: await tokenTotem(c, rest) }; }));
+}));
+r.post('/restaurantes/:id/mesas', rota(async (req, res) => {
+  const q = Math.trunc(numero(req.body && req.body.quantidade, -1));
+  if (q < 0 || q > 200) throw new ErroApp(400, 'Informe entre 0 e 200 mesas.');
+  const mesas = await sis(async c => {
+    const rest = await restDe(c, req.params.id);
+    const existentes = new Set((await c.query('SELECT numero FROM mesas WHERE restaurante_id = $1', [rest.id])).rows.map(m => m.numero));
+    for (let n = 1; n <= q; n++) if (!existentes.has(n)) await c.query('INSERT INTO mesas (restaurante_id, numero, token) VALUES ($1, $2, $3)', [rest.id, n, tokenAleatorio()]);
+    await c.query('DELETE FROM mesas WHERE restaurante_id = $1 AND numero > $2', [rest.id, q]);
+    if (q !== existentes.size) await registrar(c, req, rest, 'Mesas alteradas', existentes.size + ' → ' + q + ' mesas');
+    return listarMesas(c, rest.id);
+  });
+  res.json({ mesas });
+}));
+r.post('/restaurantes/:id/mesas/:numero/novo-codigo', rota(async (req, res) => {
+  const m = await sis(async c => {
+    const rest = await restDe(c, req.params.id);
+    const m = (await c.query('UPDATE mesas SET token = $3 WHERE restaurante_id = $1 AND numero = $2 RETURNING numero, token', [rest.id, Math.trunc(numero(req.params.numero)), tokenAleatorio()])).rows[0];
+    if (!m) throw new ErroApp(404, 'Mesa não encontrada.');
+    await registrar(c, req, rest, 'Novo QR de mesa', 'Mesa ' + String(m.numero).padStart(2, '0') + ': o QR antigo parou de funcionar');
+    return m;
+  });
+  res.json({ mesa: m });
+}));
+r.post('/restaurantes/:id/totem/novo-codigo', rota(async (req, res) => {
+  const t = await sis(async c => {
+    const rest = await restDe(c, req.params.id);
+    const t = (await c.query('UPDATE restaurantes SET totem_token = $2 WHERE id = $1 RETURNING totem_token', [rest.id, tokenAleatorio(12)])).rows[0].totem_token;
+    await registrar(c, req, rest, 'Novo link do totem', 'O link antigo do totem parou de funcionar');
+    return t;
+  });
+  res.json({ token: t });
 }));
 
 /* ---------- consultas ---------- */

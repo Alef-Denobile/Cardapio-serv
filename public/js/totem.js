@@ -40,25 +40,28 @@ function telaInicio(){
       : '<p class="tt-fechado">Estamos fechados agora. Abrimos às ' + esc(R.abre) + '.</p>') + '</div></section>';
 }
 function cardProd(p){
-  const n = qtd(p.id);
-  return '<button class="tt-card' + (p.esgotado ? ' off' : '') + '" data-ver="' + p.id + '"' + (p.esgotado ? ' disabled' : '') + '>' + foto(p, 'tt-img') +
-    '<span class="tt-card-b"><strong>' + esc(p.nome) + '</strong><small>' + esc(p.descricao) + '</small><span class="tt-card-f"><b>' + brl(p.preco) + '</b>' + (p.esgotado ? '<em>Esgotado</em>' : '<i class="tt-mais" aria-hidden="true">+</i>') + '</span></span>' +
-    (n ? '<span class="tt-n" aria-label="' + n + ' no pedido">' + n + '</span>' : '') + '</button>';
+  const n = qtd(p.id), extra = (p.opcoes || []).some(o => o.escolhas.some(e => e.preco));
+  return '<article class="tt-item' + (p.esgotado ? ' off' : '') + '"><button class="tt-ver" data-ver="' + p.id + '"' + (p.esgotado ? ' disabled' : '') + '>' + foto(p, 'tt-foto') +
+    '<span class="tt-txt"><strong>' + esc(p.nome) + '</strong><small>' + esc(p.descricao) + '</small>' +
+    ((p.selos || []).length ? '<span class="tt-selos">' + p.selos.map(x => '<i>' + esc(x) + '</i>').join('') + '</span>' : '') + '</span></button>' +
+    '<div class="tt-lado"><b>' + (extra ? '<em>a partir de</em>' : '') + brl(p.preco) + '</b>' +
+    (p.esgotado ? '<span class="tt-esg">Esgotado</span>' : '<button class="tt-add" data-ver="' + p.id + '" aria-label="Adicionar ' + esc(p.nome) + '"><span aria-hidden="true">+</span> Adicionar' + (n ? '<span class="tt-n" aria-label="' + n + ' no pedido">' + n + '</span>' : '') + '</button>') + '</div></article>';
 }
 function topo(titulo){
-  return '<header class="tt-topo"><div class="tt-marca">' + (R.logoUrl ? '<img src="' + esc(R.logoUrl) + '" alt="">' : '') + '<strong>' + esc(R.nome) + '</strong><span class="tt-tag">' + (S.consumo === 'viagem' ? 'Para levar' : 'Comer aqui') + '</span></div>' +
-    (titulo ? '<h2>' + titulo + '</h2>' : '') + '<button class="tt-sec" data-act="recomecar">Recomeçar</button></header>';
+  const logo = R.logoUrl ? '<img class="tt-mlogo" src="' + esc(R.logoUrl) + '" alt="">' : '<span class="tt-mlogo mono" aria-hidden="true">' + esc(R.nome.split(/\s+/).map(w => w[0]).join('').slice(0, 2)) + '</span>';
+  return '<header class="tt-topo"><div class="tt-marca">' + logo + '<div><strong>' + esc(R.nome) + '</strong><span>Autoatendimento · ' + (S.consumo === 'viagem' ? 'Para levar' : 'Comer aqui') + '</span></div></div>' +
+    (titulo ? '<h2>' + titulo + '</h2>' : '') + '<button class="tt-bt" data-act="recomecar">Recomeçar</button></header>';
 }
 function barra(){
   const n = qtd();
-  return '<footer class="tt-barra"><div><strong>' + (n ? n + (n > 1 ? ' itens' : ' item') : 'Seu pedido está vazio') + '</strong><span>' + brl(total()) + '</span></div>' +
+  return '<footer class="tt-barra"><div><strong>' + (n ? n + (n > 1 ? ' itens no pedido' : ' item no pedido') : 'Seu pedido está vazio') + '</strong><span>' + brl(total()) + '</span></div>' +
     '<button class="tt-pri" data-ir="carrinho"' + (n ? '' : ' disabled') + '>Ver pedido e finalizar</button></footer>';
 }
 function telaCardapio(){
   const cs = cats(); if (!S.cat || !cs.includes(S.cat)) S.cat = cs[0];
   return topo() + '<div class="tt-corpo"><nav class="tt-cats" aria-label="Categorias">' + cs.map(c => { const p = P.find(x => x.categoria === c && x.fotoUrl) || P.find(x => x.categoria === c);
       return '<button data-cat="' + esc(c) + '" aria-pressed="' + (S.cat === c) + '">' + foto(p, 'tt-ci') + '<span>' + esc(c) + '</span></button>'; }).join('') + '</nav>' +
-    '<section class="tt-lista"><h2>' + esc(S.cat) + '</h2><div class="tt-grid">' + P.filter(p => p.categoria === S.cat).map(cardProd).join('') + '</div></section></div>' + barra();
+    '<section class="tt-lista"><h2>' + esc(S.cat) + ' <small>' + (l => l + (l === 1 ? ' item' : ' itens'))(P.filter(p => p.categoria === S.cat).length) + '</small></h2><div class="tt-grid">' + P.filter(p => p.categoria === S.cat).map(cardProd).join('') + '</div></section></div>' + barra();
 }
 function telaCarrinho(){
   const sug = Sugestoes.escolher(P, S.cart.map(l => l.id), 4);
@@ -187,7 +190,7 @@ document.addEventListener('error', e => { const img = e.target; if (!(img instan
   try {
     if (!SLUG) throw new Error('Endereço do totem incompleto.');
     const v = await api('GET', '/api/r/' + encodeURIComponent(SLUG) + '/totem?t=' + encodeURIComponent(TOKEN));
-    if (!v.valido){ $('#app').innerHTML = '<div class="tt-erro"><h1>Totem não liberado</h1><p>Abra o link do totem pelo painel do restaurante (Mesas e QR Codes → Modo totem). Se o código foi trocado, use o link novo.</p></div>'; return; }
+    if (!v.valido){ $('#app').innerHTML = '<div class="tt-erro"><h1>Totem não liberado</h1><p>Abra o link do totem pelo painel do restaurante (Mesas, QR e totem). Se o código foi trocado, use o link novo.</p></div>'; return; }
     const d = await api('GET', '/api/r/' + encodeURIComponent(SLUG)); R = d.restaurante; P = d.produtos;
   } catch (e) { $('#app').innerHTML = '<div class="tt-erro"><h1>Não foi possível abrir o totem</h1><p>' + esc(e.message) + '</p><button class="tt-pri" data-act="recarregar">Tentar de novo</button></div>'; return; }
   document.title = R.nome + ' · Autoatendimento';

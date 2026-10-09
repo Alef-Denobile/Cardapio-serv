@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Política de Privacidade — Painel CRM</title>
+<meta name="robots" content="index,follow" />
+<style>
+  :root{ --bg:#fafaf9; --ink:#141414; --soft:#5c5c5c; --line:#e4e4e0; --accent:#141414; }
+  @media (prefers-color-scheme: dark){
+    :root{ --bg:#121212; --ink:#ececec; --soft:#a0a0a0; --line:#2c2c2c; --accent:#ececec; }
+  }
+  *{ box-sizing:border-box; }
+  body{ margin:0; background:var(--bg); color:var(--ink); font:16px/1.65 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; }
+  main{ max-width:760px; margin:0 auto; padding:32px 20px 64px; }
+  h1{ font-size:28px; margin:0 0 4px; }
+  h2{ font-size:19px; margin:32px 0 8px; padding-top:8px; border-top:1px solid var(--line); }
+  p, li{ color:var(--ink); }
+  .meta{ color:var(--soft); font-size:14px; margin:0 0 24px; }
+  ul{ padding-left:22px; }
+  a{ color:var(--accent); }
+  .destaque{ border:1px solid var(--line); border-radius:10px; padding:14px 16px; margin:16px 0; }
+  nav{ margin-bottom:24px; font-size:14px; }
+</style>
+</head>
+<body>
+<main>
+  <nav><a href="login.html">&larr; Voltar ao Painel CRM</a></nav>
+
+  <h1>Política de Privacidade</h1>
+  <p class="meta">Painel CRM &middot; Última atualização: 8 de outubro de 2026</p>
+
+  <p>O <strong>Painel CRM</strong> ("Painel", "nós") é uma ferramenta online de gestão de clientes e vendas (CRM) para consultores e equipes de consórcio. Esta política explica quais dados o Painel coleta, para que usa, com quem compartilha e quais são os seus direitos, em linha com a Lei Geral de Proteção de Dados (LGPD, Lei nº 13.709/2018).</p>
+
+  <h2>1. Quais dados coletamos</h2>
+  <ul>
+    <li><strong>Dados da conta:</strong> nome, e-mail, senha (guardada apenas de forma criptografada, nunca em texto aberto), foto de perfil opcional e, se você entrar com o Google, o identificador da sua conta Google.</li>
+    <li><strong>Dados que você cadastra no Painel:</strong> clientes e leads, valores, observações, tarefas, histórico de contato, comissões, anexos e demais informações que você mesmo(a) digita ou importa.</li>
+    <li><strong>Mensagens de WhatsApp e Instagram/Facebook</strong>, somente se você ativar essas integrações, para exibir as conversas dentro do Painel.</li>
+    <li><strong>Dados do Google Agenda</strong>, somente se você clicar em "Conectar" nas configurações. Veja a seção 3.</li>
+    <li><strong>Dados técnicos de segurança:</strong> registros de acesso e eventos de segurança da conta (por exemplo, troca de senha), usados para proteger a sua conta.</li>
+  </ul>
+
+  <h2>2. Para que usamos os dados</h2>
+  <p>Usamos os dados exclusivamente para fazer o Painel funcionar para você: autenticar o seu acesso, exibir e organizar o seu funil, enviar e receber mensagens que você mandar enviar, calcular comissões, mostrar a sua agenda e manter a segurança do serviço. <strong>Não vendemos seus dados, não os usamos para publicidade e não os compartilhamos para fins de marketing.</strong></p>
+
+  <h2>3. Dados do Google (Google Agenda)</h2>
+  <div class="destaque">
+    <p>Se você conectar sua conta Google, o Painel pede acesso à sua Google Agenda (escopo <code>https://www.googleapis.com/auth/calendar</code>) apenas para:</p>
+    <ul>
+      <li><strong>mostrar</strong> os seus compromissos do mês dentro do Painel;</li>
+      <li><strong>criar, atualizar e apagar</strong> eventos referentes às suas tarefas e compromissos cadastrados no Painel, em uma agenda própria chamada "Painel do Consórcio — Tarefas";</li>
+      <li><strong>editar ou apagar</strong> um compromisso quando você pedir isso dentro do Painel.</li>
+    </ul>
+    <p>Guardamos o token de autorização (necessário para manter a conexão ativa sem você precisar entrar de novo) vinculado à sua conta. Os dados da sua agenda são lidos sob demanda para exibição e não são copiados para outros fins.</p>
+    <p>O uso e a transferência, para qualquer outro aplicativo, de informações recebidas das APIs do Google pelo Painel CRM obedecem à <a href="https://developers.google.com/terms/api-services-user-data-policy" target="_blank" rel="noopener">Política de Dados do Usuário dos Serviços de API do Google</a>, incluindo os requisitos de Uso Limitado. Não usamos dados do Google Agenda para publicidade, não os vendemos, não permitimos que pessoas leiam esses dados (exceto com o seu consentimento, para segurança ou por obrigação legal) e não os usamos para treinar modelos de inteligência artificial.</p>
+    <p>Você pode desconectar a qualquer momento em <em>Configurações &rarr; Google Agenda &rarr; Desconectar</em>, e também revogar o acesso em <a href="https://myaccount.google.com/permissions" target="_blank" rel="noopener">myaccount.google.com/permissions</a>.</p>
+  </div>
+
+  <h2>4. Com quem compartilhamos</h2>
+  <p>Só compartilhamos dados com prestadores necessários para operar o serviço, sempre no limite do necessário:</p>
+  <ul>
+    <li><strong>Hospedagem e banco de dados</strong> (servidor da aplicação e banco de dados em nuvem), onde os dados ficam armazenados.</li>
+    <li><strong>Meta (WhatsApp Business / Instagram / Facebook)</strong>, apenas quando você ativa essas integrações, para enviar e receber mensagens.</li>
+    <li><strong>Google</strong>, para o login com Google e para a Google Agenda, quando você usa esses recursos.</li>
+    <li><strong>Anthropic (inteligência artificial)</strong>, apenas quando você usa recursos de IA do Painel (como sugestão de mensagem ou insights do funil). Nesses casos, o trecho necessário da conversa ou do funil é enviado para gerar a resposta. <em>Dados do Google Agenda não são enviados à IA.</em></li>
+    <li><strong>Autoridades</strong>, se houver obrigação legal ou ordem judicial.</li>
+  </ul>
+  <p>Se você faz parte de uma equipe, o gestor da equipe vê apenas os totais de desempenho de cada membro, e não os clientes individuais, conforme as permissões do Painel.</p>
+
+  <h2>5. Por quanto tempo guardamos</h2>
+  <p>Mantemos seus dados enquanto sua conta existir. Ao pedir a exclusão da conta, apagamos ou anonimizamos os dados, salvo o que formos obrigados a guardar por lei. Registros de erros técnicos expiram automaticamente em cerca de 30 dias.</p>
+
+  <h2>6. Segurança</h2>
+  <p>Usamos conexão criptografada (HTTPS), senhas armazenadas com criptografia irreversível, isolamento dos dados por usuário e opção de verificação em duas etapas (2FA). Nenhum sistema é 100% invulnerável, mas trabalhamos para reduzir riscos e corrigir falhas rapidamente.</p>
+
+  <h2>7. Seus direitos (LGPD)</h2>
+  <p>Você pode, a qualquer momento, solicitar: confirmação de que tratamos seus dados, acesso, correção, portabilidade, anonimização ou exclusão, informação sobre compartilhamentos e revogação de consentimento. Para exercer qualquer direito, escreva para o contato abaixo.</p>
+
+  <h2>8. Dados dos seus clientes</h2>
+  <p>Ao cadastrar dados de terceiros (seus clientes e leads) no Painel, você é quem decide quais dados inserir e para qual finalidade, sendo responsável por ter uma base legal adequada para isso (por exemplo, o consentimento ou a execução de contrato). O Painel atua como ferramenta que armazena e organiza essas informações em seu nome.</p>
+
+  <h2>9. Alterações nesta política</h2>
+  <p>Podemos atualizar esta política. Quando houver mudança relevante, atualizaremos a data no topo desta página e, se necessário, avisaremos dentro do Painel.</p>
+
+  <h2>10. Contato</h2>
+  <p>Dúvidas ou pedidos sobre privacidade: <strong>SEU-EMAIL-DE-CONTATO-AQUI</strong></p>
+
+  <p class="meta" style="margin-top:32px;"><a href="termos.html">Termos de Serviço</a></p>
+</main>
+</body>
+</html>

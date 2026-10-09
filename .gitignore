@@ -1,4 +1,26 @@
-node_modules/
+# Segredos e configuração local — nunca deve ir pro repositório
 .env
-*.log
+.env.*
+server/.env
+server/.env.*
+!.env.example
+!server/.env.example
+
+# Dependências (reinstaladas via npm install, não precisam ser versionadas)
+node_modules/
+server/node_modules/
+
+# Arquivos de sistema operacional
 .DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*
+
+# Editor
+.vscode/
+.idea/
+
+# Pacote gerado pelo scripts/gerar-pacote.sh (não precisa ir pro repositório)
+dist/

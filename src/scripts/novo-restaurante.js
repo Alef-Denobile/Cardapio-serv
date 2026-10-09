@@ -18,7 +18,7 @@ function args() {
     console.log(`\nRestaurante criado: ${rest.nome}`);
     console.log(`Cardápio (delivery): ${base}/r/${rest.slug}`);
     console.log(`Painel: ${base}/painel  (entre com ${o.email})`);
-    console.log('Os QR Codes das mesas ficam no painel, aba "Mesas e QR Codes".\n');
+    console.log('Os QR Codes das mesas e o link do totem ficam no painel, aba "Mesas, QR e totem" (o dono pode adicionar mesas; trocar códigos e remover mesas é na área de devs).\n');
   } catch (e) { console.error('Não foi possível criar:', e.message); process.exitCode = 1; }
   await encerrar();
 })();

@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Agendar horário</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:wght@500;600&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@500&display=swap" rel="stylesheet">
+<style>
+  :root{ --ink:#141414; --ink-soft:#6E6E6E; --line:#E6E6E6; --paper:#FFFFFF; --bg:#F7F6F4; --accent:#7C3AED; --accent-soft:#EDE6FB; }
+  *{ box-sizing:border-box; }
+  body{ margin:0; background:var(--bg); font-family:'IBM Plex Sans',sans-serif; color:var(--ink); }
+  .wrap{ max-width:480px; margin:0 auto; padding:36px 20px 60px; }
+  h1{ font-family:'Fraunces',serif; font-size:26px; font-weight:600; margin:0 0 6px; letter-spacing:-.01em; }
+  .sub{ color:var(--ink-soft); font-size:14px; margin:0 0 28px; }
+  .card{ background:var(--paper); border:1px solid var(--line); border-radius:16px; padding:22px; margin-bottom:16px; }
+  .card h2{ font-size:14px; font-weight:600; margin:0 0 14px; color:var(--ink); }
+  .dias-nav{ display:flex; align-items:center; justify-content:space-between; margin-bottom:14px; }
+  .dias-nav button{ background:none; border:1px solid var(--line); border-radius:8px; width:32px; height:32px; cursor:pointer; font-size:15px; color:var(--ink); }
+  .dias-nav button:disabled{ opacity:.35; cursor:default; }
+  .dias-nav .rotulo{ font-family:'IBM Plex Mono',monospace; font-size:13px; text-transform:capitalize; }
+  .slots{ display:grid; grid-template-columns:repeat(3,1fr); gap:8px; }
+  .slot-btn{ padding:10px 6px; border-radius:8px; border:1px solid var(--line); background:var(--paper); font-family:'IBM Plex Mono',monospace; font-size:13px; color:var(--ink); cursor:pointer; text-align:center; }
+  .slot-btn:hover{ border-color:var(--accent); }
+  .slot-btn.selecionado{ background:var(--accent); border-color:var(--accent); color:#fff; }
+  .vazio{ color:var(--ink-soft); font-size:13px; padding:8px 0; }
+  .field{ margin-bottom:12px; }
+  .field label{ display:block; font-size:12px; color:var(--ink-soft); margin-bottom:5px; }
+  .field input, .field textarea{ width:100%; padding:10px 12px; border-radius:8px; border:1px solid var(--line); font-size:14px; font-family:inherit; outline:none; }
+  .field textarea{ resize:none; min-height:64px; }
+  .btn-confirmar{ width:100%; padding:13px; border-radius:10px; border:none; background:var(--accent); color:#fff; font-size:14px; font-weight:600; cursor:pointer; font-family:inherit; }
+  .btn-confirmar:disabled{ opacity:.5; cursor:default; }
+  .msg{ padding:10px 14px; border-radius:8px; font-size:13px; margin-bottom:14px; }
+  .msg.erro{ background:#FDE8E8; color:#B42318; }
+  .msg.ok{ background:#E7F6EC; color:#1B7A3D; }
+  .confirmacao{ text-align:center; padding:30px 10px; }
+  .confirmacao .check{ width:52px; height:52px; border-radius:50%; background:var(--accent-soft); color:var(--accent); display:flex; align-items:center; justify-content:center; font-size:26px; margin:0 auto 16px; }
+</style>
+</head>
+<body>
+<div class="wrap" id="app">
+  <h1>Agendar um horário</h1>
+  <p class="sub" id="sub-titulo">Carregando…</p>
+  <div id="conteudo"></div>
+</div>
+
+<script>
+const params = new URLSearchParams(window.location.search);
+const userId = window.location.pathname.split('/').filter(Boolean).pop();
+const API_BASE = '/api/agendamento-publico/' + userId;
+
+let config = null;
+let diaAtual = new Date();
+let slotsDoDia = [];
+let slotSelecionado = null;
+let carregandoSlots = false;
+let enviando = false;
+let confirmado = false;
+let erroGeral = null;
+
+function fmtDiaLabel(d){
+  return d.toLocaleDateString('pt-BR', { weekday:'long', day:'2-digit', month:'long' });
+}
+function dataISO(d){
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+}
+function ehHoje(d){
+  const hoje = new Date();
+  return dataISO(d) === dataISO(hoje);
+}
+
+async function init(){
+  try{
+    const res = await fetch(API_BASE + '/config');
+    if(!res.ok) throw new Error((await res.json()).error || 'Link indisponível.');
+    config = await res.json();
+    document.getElementById('sub-titulo').textContent = `Escolha um horário com ${config.nome} (${config.duracaoMinutos} min)`;
+    await carregarSlots();
+  }catch(e){
+    erroGeral = e.message;
+    render();
+  }
+}
+
+async function carregarSlots(){
+  carregandoSlots = true;
+  slotSelecionado = null;
+  render();
+  try{
+    const res = await fetch(`${API_BASE}/disponibilidade?data=${dataISO(diaAtual)}`);
+    const data = await res.json();
+    slotsDoDia = data.slots || [];
+  }catch(e){
+    slotsDoDia = [];
+  }
+  carregandoSlots = false;
+  render();
+}
+
+async function confirmarAgendamento(){
+  const nome = document.getElementById('f-nome').value.trim();
+  const telefone = document.getElementById('f-telefone').value.trim();
+  const motivo = document.getElementById('f-motivo').value.trim();
+  if(!nome || !slotSelecionado){
+    erroGeral = 'Preencha seu nome e escolha um horário.';
+    render();
+    return;
+  }
+  enviando = true;
+  erroGeral = null;
+  render();
+  try{
+    const res = await fetch(`${API_BASE}/reservar`, {
+      method:'POST',
+      headers:{ 'Content-Type':'application/json' },
+      body: JSON.stringify({ data: dataISO(diaAtual), hora: slotSelecionado, nome, telefone, motivo }),
+    });
+    const data = await res.json();
+    if(!res.ok) throw new Error(data.error || 'Não foi possível confirmar.');
+    confirmado = true;
+  }catch(e){
+    erroGeral = e.message;
+  }
+  enviando = false;
+  render();
+}
+
+function mudarDia(delta){
+  const novo = new Date(diaAtual);
+  novo.setDate(novo.getDate() + delta);
+  if(delta < 0 && ehHoje(diaAtual)) return;
+  diaAtual = novo;
+  carregarSlots();
+}
+
+function render(){
+  const el = document.getElementById('conteudo');
+  if(erroGeral && !config){
+    el.innerHTML = `<div class="msg erro">${erroGeral}</div>`;
+    return;
+  }
+  if(confirmado){
+    el.innerHTML = `
+      <div class="card confirmacao">
+        <div class="check">✓</div>
+        <h2 style="margin-bottom:6px;">Agendado!</h2>
+        <p class="sub" style="margin:0;">${fmtDiaLabel(diaAtual)} às ${slotSelecionado}</p>
+      </div>
+    `;
+    return;
+  }
+  el.innerHTML = `
+    <div class="card">
+      <h2>Data e horário</h2>
+      <div class="dias-nav">
+        <button id="dia-anterior" ${ehHoje(diaAtual)?'disabled':''}>‹</button>
+        <span class="rotulo">${fmtDiaLabel(diaAtual)}</span>
+        <button id="dia-seguinte">›</button>
+      </div>
+      ${carregandoSlots ? '<p class="vazio">Carregando horários…</p>' : (
+        slotsDoDia.length ? `<div class="slots">${slotsDoDia.map(s=>`<button class="slot-btn ${slotSelecionado===s?'selecionado':''}" data-slot="${s}">${s}</button>`).join('')}</div>`
+        : '<p class="vazio">Nenhum horário livre nesse dia. Tenta outro dia.</p>'
+      )}
+    </div>
+    <div class="card">
+      <h2>Seus dados</h2>
+      ${erroGeral ? `<div class="msg erro">${erroGeral}</div>` : ''}
+      <div class="field"><label>Nome</label><input type="text" id="f-nome" placeholder="Seu nome" /></div>
+      <div class="field"><label>Telefone (opcional)</label><input type="text" id="f-telefone" placeholder="(00) 00000-0000" /></div>
+      <div class="field"><label>Motivo (opcional)</label><textarea id="f-motivo" placeholder="Sobre o que gostaria de conversar?"></textarea></div>
+      <button class="btn-confirmar" id="btn-confirmar" ${enviando?'disabled':''}>${enviando?'Confirmando…':'Confirmar agendamento'}</button>
+    </div>
+  `;
+  document.getElementById('dia-anterior').addEventListener('click', ()=>mudarDia(-1));
+  document.getElementById('dia-seguinte').addEventListener('click', ()=>mudarDia(1));
+  document.querySelectorAll('.slot-btn').forEach(btn=>{
+    btn.addEventListener('click', ()=>{ slotSelecionado = btn.dataset.slot; render(); });
+  });
+  document.getElementById('btn-confirmar').addEventListener('click', confirmarAgendamento);
+}
+
+init();
+</script>
+</body>
+</html>

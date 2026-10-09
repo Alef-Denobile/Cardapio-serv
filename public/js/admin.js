@@ -7,9 +7,9 @@ ajudaSenha('Quem tem acesso ao servidor define uma senha nova com: npm run novo-
 const SELOS = ['vegetariano', 'vegano', 'sem glúten'];
 const PAPEL = { dono: 'Dono', cozinha: 'Cozinha', entregador: 'Entregador' };
 const DESC = {
-  totem: 'Tela de autoatendimento para tablet ou totem no balcão. O dono pega o link em Mesas, QR e totem.',
+  totem: 'Tela de autoatendimento para tablet ou totem no balcão. O dono vê o link no painel (Mesas, QR e totem); trocar o código é só aqui.',
   nfce: 'Emissão de NFC-e pelo painel. Precisa de emissor configurado no servidor (FISCAL_PROVEDOR) e dos dados fiscais do restaurante.',
-  mesa: 'O cliente pede pelo QR Code da mesa. Desligado, a aba de mesas some do painel do dono.',
+  mesa: 'O cliente pede pelo QR Code da mesa. Desligado, a aba de mesas some do painel do dono e os QR param de aceitar pedidos.',
   chamados: 'Botões "Chamar garçom" e "Pedir a conta" no celular do cliente.',
   retirada: 'O cliente pede pelo link e retira no balcão.',
   delivery: 'Pedidos com entrega em casa. Desligado, o dono não consegue religar.',
@@ -21,7 +21,7 @@ const DESC = {
 
 };
 
-const S = { token: guardar.ler('admin:token', ''), eu: null, recursos: {}, aba: 'rest', lista: [], q: '', sel: null, sub: 'funcoes', det: null, produtos: [], cats: [], editId: null, formAberto: false, confirmar: null, novo: false };
+const S = { mesas: [], totem: '', totemImp: false, token: guardar.ler('admin:token', ''), eu: null, recursos: {}, aba: 'rest', lista: [], q: '', sel: null, sub: 'funcoes', det: null, produtos: [], cats: [], editId: null, formAberto: false, confirmar: null, novo: false };
 const chamar = (m, u, b) => api(m, u, b, S.token).catch(e => { if (e.status === 401) sair(e.message); throw e; });
 const quando = t => { const d = new Date(t); return d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: '2-digit' }) + ' ' + hora(t); };
 
@@ -72,7 +72,7 @@ function desenharLista(){
 }
 
 /* ---------- detalhe ---------- */
-const SUBS = [['funcoes', 'Funções e situação'], ['catalogo', 'Catálogo'], ['dados', 'Dados e regras'], ['equipe', 'Acessos'], ['pedidos', 'Pedidos recentes'], ['historico', 'Histórico']];
+const SUBS = [['funcoes', 'Funções e situação'], ['catalogo', 'Catálogo'], ['dados', 'Dados e regras'], ['mesas', 'Mesas, QR e totem'], ['equipe', 'Acessos'], ['pedidos', 'Pedidos recentes'], ['historico', 'Histórico']];
 async function carregarDetalhe(){ const d = await chamar('GET', '/api/admin/restaurantes/' + S.sel); S.det = d; }
 async function renderDetalhe(){
   $('#pane').innerHTML = '<p class="note">Carregando…</p>';
@@ -85,7 +85,7 @@ function desenharDetalhe(){
     '<div class="kh" style="padding-top:8px"><div><div class="table-tag">Plano ' + esc(r.plano || 'não definido') + '</div><h2>' + esc(r.nome) + '<span class="st ' + (r.ativo ? 'on' : 'off') + '">' + (r.ativo ? 'Ativo' : 'Suspenso') + '</span></h2></div>' +
     '<div class="row" style="margin:0"><a class="btn sm ghost" href="/r/' + esc(r.slug) + '" target="_blank" rel="noopener">Abrir cardápio</a><button class="btn sm ghost" data-act="copiar" data-v="' + esc(location.origin + '/r/' + r.slug) + '">Copiar link</button></div></div>' +
     '<div class="tabs" role="tablist" style="margin-top:6px">' + SUBS.map(t => '<button role="tab" data-act="sub" data-t="' + t[0] + '" aria-selected="' + (S.sub === t[0]) + '">' + t[1] + '</button>').join('') + '</div><div id="sub" class="pane"></div>';
-  ({ funcoes: subFuncoes, catalogo: subCatalogo, dados: subDados, equipe: subEquipe, pedidos: subPedidos, historico: subHistorico })[S.sub]();
+  ({ funcoes: subFuncoes, catalogo: subCatalogo, dados: subDados, mesas: subMesas, equipe: subEquipe, pedidos: subPedidos, historico: subHistorico })[S.sub]();
 }
 
 function subFuncoes(){
@@ -151,6 +151,41 @@ function subDados(){
     '<p class="note">"Delivery ligado pelo dono" é o botão que o restaurante controla. Para bloquear o delivery de vez, desligue a função em Funções e situação.</p><div class="row"><button class="btn" type="submit">Salvar dados</button></div></div></form>';
 }
 
+/* mesas, QR Codes e totem */
+function qrSvg(texto){
+  if (typeof qrcode !== 'function' || !texto) return '<p class="note">QR indisponível.</p>';
+  const q = qrcode(0, 'M'); q.addData(texto, 'Byte'); q.make(); const n = q.getModuleCount(); let d = '';
+  for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) if (q.isDark(r, c)) d += 'M' + (c + 3) + ' ' + (r + 3) + 'h1v1h-1z';
+  return '<svg class="qr" viewBox="0 0 ' + (n + 6) + ' ' + (n + 6) + '" role="img" aria-label="QR Code" shape-rendering="crispEdges"><rect width="100%" height="100%" fill="#ffffff"/><path d="' + d + '" fill="#111111"/></svg>';
+}
+async function subMesas(){
+  $('#sub').innerHTML = '<p class="note">Carregando…</p>';
+  try { const d = await chamar('GET', '/api/admin/restaurantes/' + S.sel + '/mesas'); S.mesas = d.mesas; S.totem = d.totem; } catch (e) { $('#sub').innerHTML = '<p class="erro">' + esc(e.message) + '</p>'; return; }
+  desenharMesas();
+}
+function desenharMesas(){
+  const r = S.det.restaurante, rc = r.recursos || {}, base = location.origin + '/r/' + r.slug, salao = base + '/salao';
+  const off = k => rc[k] === false ? ' <span class="badge b-warn">função desligada</span>' : '';
+  const totemUrl = S.totem ? base + '/totem?t=' + encodeURIComponent(S.totem) + (S.totemImp ? '&imprimir=1' : '') : '';
+  const link = (url, txt) => '<div class="code">' + esc(url) + '</div><div class="row"><button class="btn sm" data-act="copiar" data-v="' + esc(url) + '">Copiar link</button><a class="btn sm ghost" href="' + esc(url) + '" target="_blank" rel="noopener">' + (txt || 'Abrir') + '</a>';
+  $('#sub').innerHTML = '<p class="note" style="margin-top:0">Os links e QR Codes deste restaurante. O dono vê tudo isso no painel e pode adicionar mesas; remover mesas e trocar códigos é só aqui. Toda troca fica registrada no histórico.</p>' +
+    '<h3>Os três sites do restaurante</h3><div class="card"><ul class="sites">' +
+    '<li><strong>Pedido online (de casa)</strong><span>Início, cardápio, carrinho e acompanhamento, com entrega ou retirada.</span><a href="' + esc(base) + '" target="_blank" rel="noopener">' + esc(base) + '</a></li>' +
+    '<li><strong>Cardápio do salão (no restaurante)</strong><span>Só cardápio e carrinho, com barra lateral. Pela mesa, abre pelo QR de cada mesa; sem mesa, o cliente pede para retirar no balcão.</span><a href="' + esc(salao) + '" target="_blank" rel="noopener">' + esc(salao) + '</a></li>' +
+    '<li><strong>Painel do restaurante (equipe)</strong><span>Pedidos em tempo real, produtos, estoque, histórico e financeiro.</span><a href="' + esc(location.origin + '/painel') + '" target="_blank" rel="noopener">' + esc(location.origin + '/painel') + '</a></li></ul></div>' +
+    '<h3>Link do delivery</h3><div class="card dlink"><div class="qrc">' + qrSvg(base) + '<strong>Peça pelo site</strong><span>' + esc(r.nome) + '</span></div><div style="flex:1;min-width:0"><p style="margin:0 0 6px">Para a bio do Instagram, o WhatsApp Business, o Google e os panfletos.</p>' + link(base) + '</div></div></div>' +
+    '<h3>Cardápio do salão</h3><div class="card dlink"><div class="qrc">' + qrSvg(salao) + '<strong>Nosso cardápio</strong><span>' + esc(r.nome) + '</span></div><div style="flex:1;min-width:0"><p style="margin:0 0 6px">Para a entrada, o balcão ou a vitrine. O cliente vê o cardápio e pode pedir para retirar no balcão.</p>' + link(salao) + '</div></div></div>' +
+    '<h3>Modo totem (autoatendimento)' + off('totem') + '</h3><div class="card dlink"><div class="qrc">' + qrSvg(totemUrl) + '<strong>Totem</strong><span>aponte a câmera do tablet</span></div><div style="flex:1;min-width:0">' +
+    '<p style="margin:0 0 6px">Abra este link no tablet ou totem do balcão. O pedido chega no painel como <strong>Totem</strong>, com o número da senha.</p>' +
+    '<label class="ck" for="tt-imp" style="font-weight:600"><input type="checkbox" id="tt-imp"' + (S.totemImp ? ' checked' : '') + '> Imprimir a senha do cliente numa impressora ligada ao totem</label>' +
+    link(totemUrl, 'Abrir o totem') + '<button class="btn sm ' + (S.confirmar === 'totem' ? 'danger' : 'ghost') + '" data-act="totem-codigo">' + (S.confirmar === 'totem' ? 'Confirmar: o link antigo para de funcionar' : 'Gerar novo código') + '</button></div>' +
+    '<p class="note">No tablet: abra no Chrome, toque em ⋮ → “Adicionar à tela inicial” e abra pelo ícone, em tela cheia.</p></div></div>' +
+    '<h3>QR Codes das mesas' + off('mesa') + '</h3><div class="card"><div class="row" style="margin:0;align-items:flex-end"><div><label for="m-qtd" style="margin-top:0">Quantidade de mesas</label><input id="m-qtd" type="number" min="0" max="200" value="' + S.mesas.length + '" style="width:120px"></div><button class="btn sm" data-act="salvar-mesas">Atualizar mesas</button></div>' +
+    '<p class="note">Cada QR leva um código secreto da mesa: só quem está no restaurante consegue pedir por ela. Se um QR for copiado ou fotografado, gere um novo código e imprima de novo.</p></div>' +
+    '<div class="qrs">' + S.mesas.map(m => { const url = base + '/mesa/' + m.numero + '?t=' + encodeURIComponent(m.token); return '<div class="qrc">' + qrSvg(url) + '<strong>Mesa ' + pad(m.numero) + '</strong><span>' + esc(r.nome) + '</span><span>Aponte a câmera para ver o cardápio e pedir</span>' +
+      '<div class="row" style="justify-content:center;margin-top:8px"><button class="mini" data-act="copiar" data-v="' + esc(url) + '">Copiar link</button><button class="mini' + (S.confirmar === 'm' + m.numero ? ' danger' : '') + '" data-act="novo-codigo" data-n="' + m.numero + '">' + (S.confirmar === 'm' + m.numero ? 'Confirmar: o QR antigo para de funcionar' : 'Gerar novo código') + '</button></div></div>'; }).join('') + '</div>';
+}
+
 /* acessos */
 function subEquipe(){
   const eq = S.det.equipe;
@@ -197,7 +232,7 @@ async function renderDevs(){
 document.addEventListener('click', async e => {
   const el = e.target.closest('[data-act]'); if (!el) return;
   const a = el.dataset.act, id = el.dataset.id;
-  if (!['remover-prod', 'pedir-senha', 'salvar-senha'].includes(a)) S.confirmar = null;
+  if (!['remover-prod', 'pedir-senha', 'salvar-senha', 'novo-codigo', 'totem-codigo'].includes(a)) S.confirmar = null;
   const base = () => '/api/admin/restaurantes/' + S.sel;
   switch (a){
     case 'sair': sair(); break;
@@ -217,12 +252,16 @@ document.addEventListener('click', async e => {
     case 'nada': subEquipe(); break;
     case 'salvar-senha': try { await chamar('POST', base() + '/equipe/' + id + '/senha', { senha: $('#nova-senha').value }); S.confirmar = null; toast('Senha redefinida. Passe a nova senha para a pessoa.'); subEquipe(); } catch (err) { toast(err.message); } break;
     case 'ativo-user': try { await chamar('PATCH', base() + '/equipe/' + id, { ativo: el.dataset.v === '1' }); await carregarDetalhe(); subEquipe(); toast(el.dataset.v === '1' ? 'Acesso reativado' : 'Acesso desativado'); } catch (err) { toast(err.message); } break;
+    case 'salvar-mesas': try { S.mesas = (await chamar('POST', base() + '/mesas', { quantidade: $('#m-qtd').value })).mesas; await carregarDetalhe(); toast('Mesas atualizadas: ' + S.mesas.length); desenharMesas(); } catch (err) { toast(err.message); } break;
+    case 'novo-codigo': { const n = el.dataset.n; if (S.confirmar !== 'm' + n){ S.confirmar = 'm' + n; desenharMesas(); break; } S.confirmar = null; try { const m = (await chamar('POST', base() + '/mesas/' + n + '/novo-codigo')).mesa; S.mesas = S.mesas.map(x => x.numero === m.numero ? m : x); toast('Novo código gerado. Imprima o QR da Mesa ' + pad(n) + ' de novo.'); desenharMesas(); } catch (err) { toast(err.message); } break; }
+    case 'totem-codigo': if (S.confirmar !== 'totem'){ S.confirmar = 'totem'; desenharMesas(); break; } S.confirmar = null; try { S.totem = (await chamar('POST', base() + '/totem/novo-codigo')).token; toast('Novo link do totem gerado. Abra o link novo no tablet.'); desenharMesas(); } catch (err) { toast(err.message); } break;
     case 'ativo-dev': try { await chamar('PATCH', '/api/admin/devs/' + id, { ativo: el.dataset.v === '1' }); renderDevs(); } catch (err) { toast(err.message); } break;
   }
 });
 document.addEventListener('input', e => { if (e.target.id === 'r-q'){ S.q = e.target.value; const pos = e.target.selectionStart; desenharLista(); const i = $('#r-q'); i.focus(); try { i.setSelectionRange(pos, pos); } catch (er) {} } });
 document.addEventListener('change', async e => {
   const t = e.target;
+  if (t.id === 'tt-imp'){ S.totemImp = t.checked; desenharMesas(); return; }
   if (t.id === 'p-cat'){ $('#p-novacat-w').hidden = t.value !== '__nova'; return; }
   if (t.dataset.preco){ const p = S.produtos.find(x => x._id === t.dataset.preco); try { const d = await chamar('PATCH', '/api/admin/restaurantes/' + S.sel + '/produtos/' + p._id, { preco: t.value }); Object.assign(p, d.produto); toast('Preço de ' + p.nome + ': ' + brl(p.preco)); } catch (err) { toast(err.message); t.value = p.preco; } }
 });

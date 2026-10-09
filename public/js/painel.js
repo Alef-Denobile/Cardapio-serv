@@ -13,10 +13,10 @@ const ABAS = {
 };
 if (typeof qrcode === 'function' && qrcode.stringToBytesFuncs) qrcode.stringToBytes = qrcode.stringToBytesFuncs['UTF-8'];
 
-const S = { token: guardar.ler('painel:token', ''), eu: null, rest: null, aba: '', pedidos: [], chamados: [], finalizadosHoje: 0, entregadores: [], produtos: [], mesas: [], equipe: [], config: null,
+const S = { totem: null, totemImp: false, token: guardar.ler('painel:token', ''), eu: null, rest: null, aba: '', pedidos: [], chamados: [], finalizadosHoje: 0, entregadores: [], produtos: [], mesas: [], equipe: [], config: null,
   imp: Object.assign({ auto: false, largura: 80 }, guardar.ler('painel:impressora', {})), impAberta: false, impressos: new Set(guardar.ler('painel:impressos', [])),
   kf: 'todos', hp: '7', hc: 'todos', hq: '', hn: 25, hm: 'n', rel: null, premAberta: false, vistos: new Set(), editId: null, formAberto: false, confirmar: null, socket: null,
-  estoque: null, insumos: [], movPara: null, movTipo: 'entrada', histIns: null, editIns: null, novoIns: false, agFuturos: new Set(), ficha: null, fotoProd: null, totem: null };
+  estoque: null, insumos: [], movPara: null, movTipo: 'entrada', histIns: null, editIns: null, novoIns: false, agFuturos: new Set(), ficha: null, fotoProd: null };
 const temNfce = () => !!(S.rest && S.rest.recursos && S.rest.recursos.nfce);
 const chamar = (m, u, b) => api(m, u, b, S.token).catch(e => { if (e.status === 401) sair(e.message); throw e; });
 
@@ -386,9 +386,9 @@ function formInsumo(i){
     '<div class="row"><button class="btn sm" type="submit">' + (i ? 'Salvar insumo' : 'Cadastrar insumo') + '</button><button class="btn sm ghost" type="button" data-act="ins-cancelar">Cancelar</button></div></form>';
 }
 
-/* ---------- mesas e QR ---------- */
+/* ---------- mesas, QR e totem (o dono vê e adiciona mesas; trocar códigos fica com o suporte) ---------- */
 function qrSvg(texto){
-  if (typeof qrcode !== 'function') return '<p class="note">QR indisponível.</p>';
+  if (typeof qrcode !== 'function' || !texto) return '<p class="note">QR indisponível.</p>';
   const q = qrcode(0, 'M'); q.addData(texto, 'Byte'); q.make(); const n = q.getModuleCount(); let d = '';
   for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) if (q.isDark(r, c)) d += 'M' + (c + 3) + ' ' + (r + 3) + 'h1v1h-1z';
   return '<svg class="qr" viewBox="0 0 ' + (n + 6) + ' ' + (n + 6) + '" role="img" aria-label="QR Code" shape-rendering="crispEdges"><rect width="100%" height="100%" fill="#ffffff"/><path d="' + d + '" fill="#111111"/></svg>';
@@ -400,26 +400,30 @@ async function renderMesas(){
     S.mesas = rc.mesa !== false ? (await chamar('GET', '/api/painel/mesas')).mesas : [];
     if (rc.totem !== false && !S.totem) S.totem = (await chamar('GET', '/api/painel/totem')).token;
   } catch (e) { $('#pane').innerHTML = '<p class="erro">' + esc(e.message) + '</p>'; return; }
-  const base = location.origin + '/r/' + S.rest.slug;
+  desenharMesas();
+}
+function desenharMesas(){
+  const rc = S.rest.recursos || {}, base = location.origin + '/r/' + S.rest.slug, salao = base + '/salao';
+  const link = (url, txt) => '<div class="code">' + esc(url) + '</div><div class="row"><button class="btn sm" data-act="copiar" data-v="' + esc(url) + '">Copiar link</button><a class="btn sm ghost" href="' + esc(url) + '" target="_blank" rel="noopener">' + (txt || 'Abrir') + '</a></div>';
   const totemUrl = S.totem ? base + '/totem?t=' + encodeURIComponent(S.totem) + (S.totemImp ? '&imprimir=1' : '') : '';
   const blocoTotem = rc.totem === false ? '' : '<h3>Modo totem (autoatendimento no balcão)</h3><div class="card dlink"><div class="qrc">' + qrSvg(totemUrl) + '<strong>Totem</strong><span>aponte a câmera do tablet</span></div><div style="flex:1;min-width:0">' +
-    '<p style="margin:0 0 6px">Abra este link no tablet ou totem do balcão. O cliente escolhe os pratos, diz o nome e paga no caixa ou por Pix. O pedido chega aqui como <strong>Totem</strong>, com o número da senha.</p><div class="code">' + esc(totemUrl) + '</div>' +
-    '<label class="ck" for="tt-imp" style="font-weight:600"><input type="checkbox" id="tt-imp"' + (S.totemImp ? ' checked' : '') + '> Imprimir a senha do cliente numa impressora ligada ao totem</label>' +
-    '<div class="row"><button class="btn sm" data-act="copiar" data-v="' + esc(totemUrl) + '">Copiar link</button><a class="btn sm ghost" href="' + esc(totemUrl) + '" target="_blank" rel="noopener">Abrir o totem</a><button class="btn sm ' + (S.confirmar === 'totem' ? 'danger' : 'ghost') + '" data-act="totem-codigo">' + (S.confirmar === 'totem' ? 'Confirmar: o link antigo para de funcionar' : 'Gerar novo código') + '</button></div>' +
-    '<p class="note">No tablet: abra o link no Chrome, toque em ⋮ → “Adicionar à tela inicial” e abra por esse ícone, em tela cheia. O totem volta sozinho para o início depois de cada pedido ou quando fica parado. Para um tablet em cada mesa, use o QR Code da própria mesa.</p></div></div>';
+    '<p style="margin:0 0 6px">Abra este link no tablet ou totem do balcão. O cliente escolhe os pratos, diz o nome e paga no caixa ou por Pix. O pedido chega aqui como <strong>Totem</strong>, com o número da senha.</p>' +
+    '<label class="ck" for="tt-imp" style="font-weight:600"><input type="checkbox" id="tt-imp"' + (S.totemImp ? ' checked' : '') + '> Imprimir a senha do cliente numa impressora ligada ao totem</label>' + link(totemUrl, 'Abrir o totem') +
+    '<p class="note">No tablet: abra o link no Chrome, toque em ⋮ → “Adicionar à tela inicial” e abra por esse ícone, em tela cheia. Se o link vazar, peça um novo ao suporte.</p></div></div>';
   if (rc.mesa === false){ $('#pane').innerHTML = blocoTotem; return; }
-  const salao = base + '/salao';
-  let blocoSalao = '';
   const blocoSites = '<h3>Os três sites do restaurante</h3><div class="card"><ul class="sites">' +
     '<li><strong>Pedido online (de casa)</strong><span>Início, cardápio, carrinho e acompanhamento, com entrega ou retirada.</span><a href="' + esc(base) + '" target="_blank" rel="noopener">' + esc(base) + '</a></li>' +
-    '<li><strong>Cardápio do salão (no restaurante)</strong><span>Só cardápio e carrinho, com barra lateral de categorias. Pela mesa, abre pelo QR Code de cada mesa (abaixo) e o cliente pede, chama o garçom e pede a conta. Sem mesa, este link só mostra o cardápio: bom para a entrada, o balcão ou a vitrine.</span><a href="' + esc(salao) + '" target="_blank" rel="noopener">' + esc(salao) + '</a></li>' +
-    '<li><strong>Painel do restaurante (equipe)</strong><span>Pedidos em tempo real, produtos, estoque, histórico e financeiro. Cada pessoa entra com o próprio e-mail e senha.</span><a href="' + esc(location.origin + '/painel') + '" target="_blank" rel="noopener">' + esc(location.origin + '/painel') + '</a></li></ul></div>';
-  blocoSalao = '<h3>Cardápio do salão (só para ver)</h3><div class="card dlink"><div class="qrc">' + qrSvg(salao) + '<strong>Nosso cardápio</strong><span>' + esc(S.rest.nome) + '</span></div><div style="flex:1;min-width:0"><p style="margin:0 0 6px">Imprima este QR para a entrada, o balcão ou a vitrine. Mostra o cardápio com fotos e preços; para pedir, o cliente usa o QR da mesa.</p><div class="code">' + esc(salao) + '</div><div class="row"><button class="btn sm" data-act="copiar" data-v="' + esc(salao) + '">Copiar link</button><a class="btn sm ghost" href="' + esc(salao) + '" target="_blank" rel="noopener">Abrir</a></div></div></div>';
-  $('#pane').innerHTML = blocoSites + blocoTotem + blocoSalao + '<h3>Link do delivery</h3><div class="card dlink"><div class="qrc">' + qrSvg(base) + '<strong>Peça pelo site</strong><span>' + esc(S.rest.nome) + '</span></div><div style="flex:1;min-width:0"><p style="margin:0 0 6px">Coloque este link na bio do Instagram, no WhatsApp Business, no Google e nos panfletos.</p><div class="code" id="dl-link">' + esc(base) + '</div><div class="row"><button class="btn sm" data-act="copiar" data-v="' + esc(base) + '">Copiar link</button></div></div></div>' +
-    '<h3>QR Codes das mesas</h3><div class="card"><div class="row" style="margin:0;align-items:flex-end"><div><label for="m-qtd" style="margin-top:0">Quantidade de mesas</label><input id="m-qtd" type="number" min="1" max="200" value="' + (S.mesas.length || 10) + '" style="width:120px"></div><button class="btn sm" data-act="salvar-mesas">Atualizar mesas</button></div>' +
-    '<p class="note">Cada QR leva um código secreto da mesa: só quem está no restaurante consegue pedir por ela. Se um QR for copiado ou fotografado, gere um novo código e imprima de novo. Para imprimir, use Ctrl+P no computador.</p></div>' +
-    '<div class="qrs">' + S.mesas.map(m => { const url = base + '/mesa/' + m.numero + '?t=' + encodeURIComponent(m.token); return '<div class="qrc">' + qrSvg(url) + '<strong>Mesa ' + pad(m.numero) + '</strong><span>' + esc(S.rest.nome) + '</span><span>Aponte a câmera para ver o cardápio e pedir</span>' +
-      '<div class="row" style="justify-content:center;margin-top:8px"><button class="mini" data-act="copiar" data-v="' + esc(url) + '">Copiar link</button><button class="mini' + (S.confirmar === 'm' + m.numero ? ' danger' : '') + '" data-act="novo-codigo" data-n="' + m.numero + '">' + (S.confirmar === 'm' + m.numero ? 'Confirmar: o QR antigo para de funcionar' : 'Gerar novo código') + '</button></div></div>'; }).join('') + '</div>';
+    '<li><strong>Cardápio do salão (no restaurante)</strong><span>Só cardápio e carrinho, com barra lateral. Pela mesa, abre pelo QR de cada mesa (abaixo); sem mesa, o cliente pede para retirar no balcão.</span><a href="' + esc(salao) + '" target="_blank" rel="noopener">' + esc(salao) + '</a></li>' +
+    '<li><strong>Painel do restaurante (equipe)</strong><span>Pedidos em tempo real, produtos, estoque, histórico e financeiro.</span><a href="' + esc(location.origin + '/painel') + '" target="_blank" rel="noopener">' + esc(location.origin + '/painel') + '</a></li></ul></div>';
+  const blocoSalao = '<h3>Cardápio do salão</h3><div class="card dlink"><div class="qrc">' + qrSvg(salao) + '<strong>Nosso cardápio</strong><span>' + esc(S.rest.nome) + '</span></div><div style="flex:1;min-width:0"><p style="margin:0 0 6px">Imprima este QR para a entrada, o balcão ou a vitrine.</p>' + link(salao) + '</div></div>';
+  const blocoDel = '<h3>Link do delivery</h3><div class="card dlink"><div class="qrc">' + qrSvg(base) + '<strong>Peça pelo site</strong><span>' + esc(S.rest.nome) + '</span></div><div style="flex:1;min-width:0"><p style="margin:0 0 6px">Coloque este link na bio do Instagram, no WhatsApp Business, no Google e nos panfletos.</p>' + link(base) + '</div></div>';
+  const n = S.mesas.length;
+  $('#pane').innerHTML = blocoSites + blocoTotem + blocoSalao + blocoDel +
+    '<h3>QR Codes das mesas</h3><div class="card"><p style="margin:0 0 4px">Você tem <strong>' + n + (n === 1 ? ' mesa' : ' mesas') + '</strong>. Ganhou mesas novas? Adicione aqui e imprima os QR novos.</p>' +
+    '<div class="row" style="align-items:flex-end"><div><label for="m-add" style="margin-top:0">Mesas para adicionar</label><input id="m-add" type="number" min="1" max="' + Math.max(1, 200 - n) + '" value="1" style="width:120px"></div><button class="btn sm" data-act="add-mesas"' + (n >= 200 ? ' disabled' : '') + '>+ Adicionar mesas</button></div>' +
+    '<p class="note">Cada QR leva um código secreto da mesa: só quem está no restaurante consegue pedir por ela. Para remover mesas ou trocar o código de um QR copiado, fale com o suporte. Para imprimir, use Ctrl+P no computador.</p></div>' +
+    '<div class="qrs">' + S.mesas.map(m => { const url = base + '/mesa/' + m.numero + '?t=' + encodeURIComponent(m.token); return '<div class="qrc' + (S.novasMesas && m.numero > S.novasMesas ? ' novo' : '') + '">' + qrSvg(url) + '<strong>Mesa ' + pad(m.numero) + '</strong><span>' + esc(S.rest.nome) + '</span><span>Aponte a câmera para ver o cardápio e pedir</span>' +
+      '<div class="row" style="justify-content:center;margin-top:8px"><button class="mini" data-act="copiar" data-v="' + esc(url) + '">Copiar link</button></div></div>'; }).join('') + '</div>';
 }
 
 /* ---------- equipe ---------- */
@@ -659,7 +663,7 @@ async function renderMapa(){
 }
 function desenharMapa(){
   const d = S.rel, st = d.mesas, met = S.hm, N = st.length;
-  if (!N){ $('#pane').innerHTML = '<div class="kbar">' + perChips() + '</div><p class="note">Nenhuma mesa cadastrada. Crie as mesas na aba Mesas e QR Codes.</p>'; return; }
+  if (!N){ $('#pane').innerHTML = '<div class="kbar">' + perChips() + '</div><p class="note">Nenhuma mesa cadastrada. Crie as mesas na aba Mesas, QR e totem.</p>'; return; }
   const val = s => met === 'n' ? s.n : met === 'v' ? s.v : (s.n ? s.v / s.n : 0);
   const fmt = v => met === 'n' ? String(v) : v >= 1000 ? (v / 1000).toFixed(1).replace('.', ',') + ' mil' : 'R$ ' + Math.round(v);
   const fmtL = v => met === 'n' ? v + ' pedido' + (v === 1 ? '' : 's') : brl(v);
@@ -700,7 +704,7 @@ document.addEventListener('click', async e => {
   const el = e.target.closest('[data-act]'); if (!el) return;
   const a = el.dataset.act, id = el.dataset.id;
   if (a === 'modal-fechar' && el.classList.contains('veu') && e.target !== el) return; // clique dentro da janela não fecha
-  const confirmaveis = ['cancelar', 'remover-prod', 'novo-codigo', 'remover-user', 'ins-remover', 'totem-codigo'];
+  const confirmaveis = ['cancelar', 'remover-prod', 'remover-user', 'ins-remover'];
   if (!confirmaveis.includes(a)) S.confirmar = null;
   switch (a){
     case 'sair': sair(); break;
@@ -723,8 +727,6 @@ document.addEventListener('click', async e => {
     case 'esgotar': { const p = S.produtos.find(x => x._id === id); try { const d = await chamar('PATCH', '/api/painel/produtos/' + id, { esgotado: !p.esgotado }); Object.assign(p, d.produto); desenharProdutos(); toast(p.esgotado ? p.nome + ' marcado como esgotado' : p.nome + ' disponível de novo'); } catch (err) { toast(err.message); } break; }
     case 'remover-prod': if (S.confirmar !== 'p' + id){ S.confirmar = 'p' + id; desenharProdutos(); break; } S.confirmar = null; try { await chamar('DELETE', '/api/painel/produtos/' + id); S.produtos = S.produtos.filter(x => x._id !== id); desenharProdutos(); toast('Produto removido'); } catch (err) { toast(err.message); } break;
     case 'copiar': copiar(el.dataset.v); break;
-    case 'salvar-mesas': try { await chamar('POST', '/api/painel/mesas', { quantidade: $('#m-qtd').value }); toast('Mesas atualizadas'); renderMesas(); } catch (err) { toast(err.message); } break;
-    case 'novo-codigo': { const n = el.dataset.n; if (S.confirmar !== 'm' + n){ S.confirmar = 'm' + n; renderMesas(); break; } S.confirmar = null; try { await chamar('POST', '/api/painel/mesas/' + n + '/novo-codigo'); toast('Novo código gerado. Imprima o QR da Mesa ' + pad(n) + ' de novo.'); renderMesas(); } catch (err) { toast(err.message); } break; }
     case 'exportar': exportarExcel(el); break;
     case 'imprimir': { const p = S.pedidos.find(x => x._id === id); if (p) imprimirPedido(p); break; }
     case 'imp-abrir': S.impAberta = !S.impAberta; renderPedidos(); break;
@@ -734,6 +736,7 @@ document.addEventListener('click', async e => {
     case 'nova-senha': S.senhaPara = id || null; renderEquipe(); break;
     case 'abrir-senha': $('#f-senha').hidden = false; $('#s-atual').focus(); break;
     case 'fechar-senha': $('#f-senha').hidden = true; $('#f-senha').reset(); break;
+    case 'add-mesas': { const q = Math.trunc(+$('#m-add').value || 0), antes = S.mesas.length; if (q < 1){ toast('Informe quantas mesas quer adicionar.'); break; } el.disabled = true; try { S.mesas = (await chamar('POST', '/api/painel/mesas', { quantidade: antes + q })).mesas; S.novasMesas = antes; toast((q === 1 ? '1 mesa adicionada' : q + ' mesas adicionadas') + ': imprima os QR novos.'); desenharMesas(); const nv = $('.qrc.novo'); if (nv) nv.scrollIntoView({ behavior: 'smooth', block: 'center' }); } catch (err) { toast(err.message); el.disabled = false; } break; }
     case 'fechar-conta': { const n = el.dataset.n; el.disabled = true; try { const d = await chamar('POST', '/api/painel/mesas/' + n + '/fechar-conta'); toast('Conta da Mesa ' + pad(n) + ' fechada: ' + d.pedidos + (d.pedidos === 1 ? ' pedido, ' : ' pedidos, ') + brl(d.total)); } catch (err) { toast(err.message); el.disabled = false; } break; }
     case 'nfce': abrirNfce(id); break;
     case 'nota-cancelar': abrirCancelarNota(id); break;
@@ -750,7 +753,6 @@ document.addEventListener('click', async e => {
     case 'mov-fechar': S.movPara = null; desenharEstoque(); break;
     case 'ins-hist': if (S.histIns && S.histIns.id === id){ S.histIns = null; desenharEstoque(); break; } try { S.histIns = { id, l: (await chamar('GET', '/api/painel/insumos/' + id + '/movimentos')).movimentos }; S.movPara = null; desenharEstoque(); } catch (err) { toast(err.message); } break;
     case 'ficha-editar': S.aba = 'produtos'; S.editId = id; S.formAberto = false; render().then(() => { const d = $('#f-prod details'); if (d) d.open = true; window.scrollTo(0, 0); }); break;
-    case 'totem-codigo': if (S.confirmar !== 'totem'){ S.confirmar = 'totem'; renderMesas(); break; } S.confirmar = null; try { S.totem = (await chamar('POST', '/api/painel/totem/novo-codigo')).token; toast('Novo link do totem gerado. Abra o link novo no tablet.'); renderMesas(); } catch (err) { toast(err.message); } break;
     case 'modo-ent': { const dist = el.dataset.m === 'distancia'; $('#ent-dist').hidden = !dist; $('#ent-bairro').hidden = dist; $$('[data-act="modo-ent"]').forEach(b => b.setAttribute('aria-pressed', String(b === el))); if (dist) montarMapaConfig(); break; }
     case 'local-buscar': buscarLocal(); break;
     case 'local-esc': { const lat = +el.dataset.lat, lng = +el.dataset.lng; $('#c-lat').value = lat; $('#c-lng').value = lng; $('#local-res').innerHTML = ''; $('#local-txt').textContent = 'Local marcado. Arraste o pino para ajustar.'; montarMapaConfig(); break; }
@@ -768,12 +770,12 @@ document.addEventListener('input', e => {
 });
 document.addEventListener('change', async e => {
   const t = e.target;
+  if (t.id === 'tt-imp'){ S.totemImp = t.checked; desenharMesas(); return; }
   if (t.id === 'imp-larg'){ S.imp.largura = +t.value; salvarImp(); return; }
   if (t.id === 'imp-auto'){ S.imp.auto = t.checked; salvarImp(); toast(t.checked ? 'Pedidos novos vão imprimir sozinhos neste computador' : 'Impressão automática desligada'); renderPedidos(); return; }
   if (t.id === 'p-cat'){ $('#p-novacat-w').hidden = t.value !== '__nova'; return; }
   if (t.dataset.foto){ enviarFoto(t); return; }
   if (t.dataset.fiIns !== undefined && S.ficha){ S.ficha[+t.dataset.fiIns].insumo = t.value; desenharFicha(); return; }
-  if (t.id === 'tt-imp'){ S.totemImp = t.checked; renderMesas(); return; }
   if (t.dataset.preco){ const p = S.produtos.find(x => x._id === t.dataset.preco); try { const d = await chamar('PATCH', '/api/painel/produtos/' + p._id, { preco: t.value }); Object.assign(p, d.produto); toast('Preço de ' + p.nome + ': ' + brl(p.preco)); } catch (err) { toast(err.message); t.value = p.preco; } }
 });
 document.addEventListener('keydown', e => { if (e.key === 'Escape' && $('#modal').innerHTML) fecharModal(); if (e.key === 'Enter' && e.target.id === 'c-local-q'){ e.preventDefault(); buscarLocal(); } });
