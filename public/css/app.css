@@ -426,3 +426,4 @@ small.lucro{display:block;color:var(--good);font-weight:700}
 .sites li{display:grid;gap:2px}
 .sites span{color:var(--muted);font-size:14px}
 .sites a{font-weight:700;color:var(--brand);word-break:break-all;font-size:14px}
+.fat-aviso{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin:12px 0 0}.fat-aviso.crit{background:color-mix(in srgb,var(--crit,#c0392b) 14%,var(--surface,#fff));color:var(--crit,#b3261e)}

@@ -3,6 +3,9 @@
 const { ErroApp, texto, numero, centavos, iguais, estaAberto, uuidValido, cpfValido, soDigitos, horariosAgendamento, distanciaKm, coordValida } = require('./util');
 const estoque = require('./estoque');
 const pagamentos = require('./pagamentos');
+const pix = require('./pix');
+const combos = require('./combos');
+const horarios = require('./horarios');
 const { recursosDe } = require('./recursos');
 
 const METODOS = { mesa: ['pix', 'local'], retirada: ['pix', 'local'], delivery: ['online', 'pix', 'cartao', 'dinheiro'] };
@@ -56,33 +59,60 @@ async function montarPedido(c, rest, corpo) {
   const itens = Array.isArray(corpo.itens) ? corpo.itens.slice(0, 60) : [];
   if (!itens.length) throw new ErroApp(400, 'Seu pedido está vazio.');
   const ids = [...new Set(itens.map(i => String(i.produto || '')))].filter(uuidValido);
-  const produtos = ids.length ? (await c.query('SELECT id, nome, preco, opcoes, esgotado FROM produtos WHERE restaurante_id = $1 AND id = ANY($2::uuid[])', [rest.id, ids])).rows : [];
+  let produtos = ids.length ? (await c.query('SELECT id, nome, preco, opcoes, esgotado, categoria, ordem, disponibilidade FROM produtos WHERE restaurante_id = $1 AND id = ANY($2::uuid[])', [rest.id, ids])).rows : [];
+  // combo e meio a meio: as escolhas são os produtos de outra categoria (mesma lista que o site mostra)
+  if (produtos.some(combos.composto)) {
+    if (!recursosDe(rest).combos) throw new ErroApp(409, 'Este combo não está mais disponível. Atualize a página.');
+    const todos = (await c.query('SELECT id, nome, preco, opcoes, esgotado, categoria, ordem, disponibilidade FROM produtos WHERE restaurante_id = $1', [rest.id])).rows;
+    const semEstoque = new Set([...(await estoque.resumoProdutos(c, rest.id))].filter(([, v]) => v.semEstoque.length).map(([k]) => k));
+    // sabor ou item de combo fora do horário também não pode ser escolhido
+    if (horarios.ligado(rest)) todos.forEach(p => { if (p.disponibilidade && !horarios.disponivel(p.disponibilidade, agendadoPara || new Date(), rest.fuso)) semEstoque.add(p.id); });
+    const exp = new Map(combos.expandir(todos, semEstoque).map(p => [p.id, p]));
+    produtos = produtos.map(p => exp.get(p.id) || p);
+  }
   const porId = new Map(produtos.map(p => [p.id, p]));
 
   const linhas = itens.map(i => {
     const p = porId.get(String(i.produto));
     if (!p) throw new ErroApp(400, 'Um dos produtos não existe mais no cardápio. Atualize a página.');
     if (p.esgotado) throw new ErroApp(409, `${p.nome} acabou de esgotar. Remova do pedido para continuar.`);
+    if (horarios.ligado(rest) && p.disponibilidade && !horarios.disponivel(p.disponibilidade, agendadoPara || new Date(), rest.fuso)) throw new ErroApp(409, `${p.nome} só é servido ${horarios.texto(p.disponibilidade)}. Remova do pedido para continuar.`);
     const qtd = Math.trunc(numero(i.qtd, 1));
     if (qtd < 1 || qtd > 50) throw new ErroApp(400, 'Quantidade inválida.');
     const esc = i.escolhas && typeof i.escolhas === 'object' ? i.escolhas : {};
-    let unit = p.preco; const nomes = [];
+    let unit = p.preco; const nomes = [], componentes = [];
     (p.opcoes || []).forEach((o, oi) => {
       let sel = Array.isArray(esc[oi]) ? [...new Set(esc[oi].map(x => Math.trunc(numero(x, -1))))] : [];
       sel = sel.filter(x => x >= 0 && x < o.escolhas.length);
       if (o.tipo === 'um') { if (sel.length !== 1) sel = [0]; }
+      if (o.tipo === 'combo' || o.tipo === 'sabores') {
+        const rg = combos.regra(o);
+        if (sel.length < rg.min || sel.length > rg.max) throw new ErroApp(400, o.tipo === 'combo' ? `Escolha ${rg.min} em "${o.nome}" (${p.nome}).` : `Escolha de 1 a ${rg.max} sabores em ${p.nome}.`);
+        const es = sel.map(x => o.escolhas[x]);
+        const fora = es.find(e => e.esgotado); if (fora) throw new ErroApp(409, `${fora.nome} acabou de esgotar. Escolha outro em ${p.nome}.`);
+        if (o.tipo === 'sabores') {
+          unit += o.regra === 'media' ? Math.round(es.reduce((a, e) => a + e.preco, 0) / es.length * 100) / 100 : Math.max(...es.map(e => e.preco));
+          es.forEach(e => { nomes.push(es.length > 1 ? '1/' + es.length + ' ' + e.nome : e.nome); componentes.push({ produto: e.produto, nome: e.nome, frac: 1 / es.length }); });
+        } else es.forEach(e => { nomes.push(e.nome); componentes.push({ produto: e.produto, nome: e.nome, frac: 1 }); });
+        return;
+      }
       sel.sort((a, b) => a - b).forEach(x => { unit += o.escolhas[x].preco || 0; nomes.push(o.escolhas[x].nome); });
     });
-    return { produto: p.id, nome: p.nome, qtd, unit: centavos(unit), opcoes: nomes };
+    return { produto: p.id, nome: p.nome, qtd, unit: centavos(unit), opcoes: nomes, componentes };
   });
 
   // Estoque pela ficha técnica: prato sem insumo suficiente não pode ser pedido. Guarda o custo para o lucro por prato.
-  const fichas = await estoque.fichasDe(c, rest.id, [...new Set(linhas.map(l => l.produto))]);
+  // No combo e no meio a meio, entram também as fichas dos itens escolhidos (cada sabor com a sua fração).
+  const linhasEstoque = linhas.flatMap(l => [{ produto: l.produto, nome: l.nome, qtd: l.qtd }].concat((l.componentes || []).map(cp => ({ produto: cp.produto, nome: cp.nome, qtd: l.qtd * cp.frac, de: l }))));
+  const fichas = await estoque.fichasDe(c, rest.id, [...new Set(linhasEstoque.map(l => l.produto))]);
+  const usa = new Map();
+  linhasEstoque.forEach(l => (fichas.get(l.produto) || []).forEach(x => usa.set(x.insumo_id, { x, qtd: (usa.has(x.insumo_id) ? usa.get(x.insumo_id).qtd : 0) + x.qtd * l.qtd, nome: (l.de || l).nome })));
+  const faltou = [...usa.values()].find(u => u.x.estoque < u.qtd - 1e-9);
+  if (faltou) throw new ErroApp(409, `${faltou.nome} acabou de esgotar. Remova do pedido para continuar.`);
   linhas.forEach(l => {
-    const f = fichas.get(l.produto); if (!f) return;
-    const falta = f.find(x => x.estoque < x.qtd * l.qtd);
-    if (falta) throw new ErroApp(409, `${l.nome} acabou de esgotar. Remova do pedido para continuar.`);
-    l.custo = Math.round(f.reduce((a, x) => a + x.qtd * x.custo, 0) * 10000) / 10000;
+    const partes = [{ produto: l.produto, frac: 1 }].concat(l.componentes || []);
+    const temFicha = partes.some(pt => fichas.has(pt.produto)); if (!temFicha) return;
+    l.custo = Math.round(partes.reduce((a, pt) => a + (fichas.get(pt.produto) || []).reduce((b, x) => b + x.qtd * x.custo, 0) * pt.frac, 0) * 10000) / 10000;
   });
 
   const subtotal = centavos(linhas.reduce((a, l) => a + l.unit * l.qtd, 0));
@@ -129,14 +159,17 @@ async function montarPedido(c, rest, corpo) {
   const troco = metodo === 'dinheiro' ? centavos(Math.max(0, numero(corpo.pagamento.troco, 0))) : 0;
   if (troco && troco < total) throw new ErroApp(400, 'O troco precisa ser para um valor maior que o total do pedido.');
 
+  // Pix automático: o pedido só vai para a cozinha depois que o Pix é confirmado (na mesa, a conta continua no fim)
+  const pixAuto = metodo === 'pix' && tipo !== 'mesa' && pix.ativo(rest);
   // Entrega paga na porta (ou Pix manual): pede o CPF para desencorajar pedido falso (trote)
-  if (tipo === 'delivery' && !PAGO_NO_SITE.includes(metodo)) {
+  if (tipo === 'delivery' && !PAGO_NO_SITE.includes(metodo) && !pixAuto) {
     const cpf = soDigitos(corpo.cliente && corpo.cliente.cpf);
     if (!cpfValido(cpf)) throw new ErroApp(400, cpf ? 'CPF inválido. Confira os números.' : 'Para pagar na entrega, informe seu CPF.');
     cliente.cpf = cpf;
   }
 
-  return { status: PAGO_NO_SITE.includes(metodo) ? 'aguardando' : 'novo', tipo, mesa, cliente, entrega, linhas, obs: texto(corpo.obs, 300), subtotal, servico, taxaEntrega, total, pagamento: { metodo, troco },
+  return { linhasEstoque: linhasEstoque.map(l => ({ produto: l.produto, nome: (l.de || l).nome, qtd: l.qtd })), status: PAGO_NO_SITE.includes(metodo) || pixAuto ? 'aguardando' : 'novo', tipo, mesa, cliente, entrega, linhas, obs: texto(corpo.obs, 300), subtotal, servico, taxaEntrega, total,
+    pagamento: { metodo, troco, status: PAGO_NO_SITE.includes(metodo) || pixAuto ? 'pendente' : null, pixAuto },
     agendadoPara: salao ? null : agendadoPara, origem: totem ? 'totem' : salao ? 'salao' : tipo === 'mesa' ? 'mesa' : 'site', consumo: totem ? (corpo.consumo === 'viagem' ? 'viagem' : 'local') : null };
 }
 

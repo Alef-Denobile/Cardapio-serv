@@ -7,6 +7,10 @@ const { montarPedido, metodosPermitidos, tiposPermitidos, PAGO_NO_SITE } = requi
 const pagamentos = require('../lib/pagamentos');
 const config = require('../config');
 const { recursosDe } = require('../lib/recursos');
+const pix = require('../lib/pix');
+const combos = require('../lib/combos');
+const horarios = require('../lib/horarios');
+const carrinho = require('../lib/carrinho');
 const { ErroApp, rota, texto, numero, tokenAleatorio, iguais, estaAberto, uuidValido, pedidoParaCliente, horariosAgendamento, coordValida } = require('../lib/util');
 const estoque = require('../lib/estoque');
 const rt = require('../realtime');
@@ -37,6 +41,7 @@ r.get('/r/:slug', rota(async (req, res) => {
     }
   }));
   const cats = rest.categorias.length ? rest.categorias : [...new Set(produtos.map(p => p.categoria))];
+  const foraDoHorario = p => horarios.ligado(rest) && !!p.disponibilidade && !horarios.disponivel(p.disponibilidade, new Date(), rest.fuso);
   const nomeCurto = n => { const p = String(n || 'Cliente').trim().split(/\s+/); return p[0] + (p[1] ? ' ' + p[1][0] + '.' : ''); };
   res.json({
     restaurante: {
@@ -45,16 +50,20 @@ r.get('/r/:slug', rota(async (req, res) => {
       delivery: Object.assign({}, rest.delivery, { local: coordValida(rest.delivery.local.lat, rest.delivery.local.lng) ? { lat: rest.delivery.local.lat, lng: rest.delivery.local.lng } : null }),
       agendamento: { ativo: !!rest.agendamento.ativo, dias: horariosAgendamento(rest) }, buscaEndereco: config.buscaEndereco, categorias: cats, recursos: recursosDe(rest), tipos: tiposPermitidos(rest), capaUrl: rest.capaUrl, sobre: rest.sobre,
       avaliacoes: { media: aval.resumo.media, qtd: aval.resumo.qtd, recentes: aval.recentes.map(a => ({ nome: nomeCurto(a.cliente_nome), nota: a.nota, comentario: a.comentario, em: a.criado_em })) },
-      pagamentos: { mesa: metodosPermitidos(rest, 'mesa'), retirada: metodosPermitidos(rest, 'retirada'), delivery: metodosPermitidos(rest, 'delivery') }
+      pagamentos: { mesa: metodosPermitidos(rest, 'mesa'), retirada: metodosPermitidos(rest, 'retirada'), delivery: metodosPermitidos(rest, 'delivery') },
+      pixAuto: pix.ativo(rest)
     },
     // prato sem insumo suficiente no estoque aparece como esgotado (volta sozinho quando o estoque é reposto)
-    produtos: produtos.map(p => ({ id: p.id, categoria: p.categoria, nome: p.nome, descricao: p.descricao, preco: p.preco, selos: p.selos, opcoes: p.opcoes, fotoUrl: p.fotoUrl,
-      esgotado: p.esgotado || !!(resumo.get(p.id) && resumo.get(p.id).semEstoque.length), destaque: p.destaque, sugerir: p.sugerir }))
+    produtos: combos.expandir(combos.filtrar(rest, produtos), new Set([...resumo].filter(([, v]) => v.semEstoque.length).map(([k]) => k).concat(produtos.filter(foraDoHorario).map(p => p.id)))).map(p => ({ id: p.id, categoria: p.categoria, nome: p.nome, descricao: p.descricao, preco: p.preco, selos: p.selos, opcoes: p.opcoes, fotoUrl: p.fotoUrl,
+      esgotado: p.esgotado || !!(resumo.get(p.id) && resumo.get(p.id).semEstoque.length) || foraDoHorario(p), destaque: p.destaque, sugerir: p.sugerir,
+      foraHorario: foraDoHorario(p) ? horarios.texto(p.disponibilidade) : undefined, horario: horarios.ligado(rest) && p.disponibilidade ? horarios.texto(p.disponibilidade) : undefined }))
   });
 }));
 
 // Restaurante mostrado na página inicial do site (SITE_RESTAURANTE; se não existir, o primeiro ativo)
 r.get('/site', rota(async (req, res) => {
+  const proprio = await require('../lib/dominios').slugDoHost(req.hostname); // domínio próprio: o restaurante dele
+  if (proprio) return res.json({ slug: proprio, dominio: true });
   const slug = await sistema(async c => {
     const pref = (await c.query('SELECT slug FROM restaurantes WHERE slug = $1 AND ativo', [config.siteRestaurante])).rows[0];
     return pref ? pref.slug : ((await c.query('SELECT slug FROM restaurantes WHERE ativo ORDER BY criado_em LIMIT 1')).rows[0] || {}).slug || null;
@@ -84,16 +93,20 @@ r.post('/r/:slug/pedidos', limitePedidos, rota(async (req, res) => {
     dados.codigoAcomp = tokenAleatorio(12);
     if (cliente) { dados.clienteId = cliente.id; dados.cliente.cpf = cliente.cpf; }
     const criado = await repo.criarPedido(c, rest.id, dados);
-    alertas = await estoque.baixar(c, rest.id, criado.row.id, dados.linhas, 'pedido #' + criado.row.numero);
+    alertas = await estoque.baixar(c, rest.id, criado.row.id, dados.linhasEstoque || dados.linhas, 'pedido #' + criado.row.numero);
+    if (dados.cliente.tel) await carrinho.finalizar(c, rest.id, dados.cliente.tel);
     return criado;
   });
   if (alertas.length) rt.paraEquipe(rest.id, 'estoque:alerta', alertas);
-  let pagamento;
-  if (p.row.status === 'aguardando') {
+  let pagamento, obj = p.obj;
+  if (p.row.status === 'aguardando' && p.row.pag_metodo === 'pix') {
+    // Pix automático: gera o QR; o pedido vai para a cozinha quando o Pix for confirmado
+    obj = (await require('./pix').iniciarCobranca(req, rest, p.obj)).pedido;
+  } else if (p.row.status === 'aguardando') {
     pagamento = await pagamentos.provedor().iniciar(p.obj, p.row.codigo_acomp);
     await sistema(c => c.query('UPDATE pedidos SET pag_ref = $2 WHERE id = $1', [p.row.id, pagamento.ref]));
   } else { rt.paraEquipe(rest.id, 'pedido:novo', p.obj); whatsapp.avisar(rest, p.obj); } // pedido pago pelo site só vai para a cozinha depois de aprovado
-  res.status(201).json({ pedido: pedidoParaCliente(p.obj), codigo: p.row.codigo_acomp, pagamento: pagamento ? { url: pagamento.url } : undefined });
+  res.status(201).json({ pedido: pedidoParaCliente(obj), codigo: p.row.codigo_acomp, pagamento: pagamento ? { url: pagamento.url } : undefined });
 }));
 
 r.get('/acompanhar/:id', rota(async (req, res) => {
@@ -140,6 +153,48 @@ r.post('/acompanhar/:id/avaliacao', limiteAval, rota(async (req, res) => {
     await c.query('INSERT INTO avaliacoes (restaurante_id, cliente_id, pedido_id, nota, comentario) VALUES ($1,$2,$3,$4,$5)', [p.restaurante_id, p.cliente_id, p.id, nota, texto(b.comentario, 400)]);
   });
   res.status(201).json({ ok: true });
+}));
+
+// Recuperação de carrinho: o site guarda o carrinho de quem marcou "me lembrar" e deu o WhatsApp
+const limiteCarr = rateLimit({ windowMs: 10 * 60 * 1000, limit: 30, standardHeaders: true, legacyHeaders: false, message: { erro: 'Muitas tentativas.' } });
+r.put('/r/:slug/carrinho', limiteCarr, rota(async (req, res) => {
+  const rest = await carregar(req.params.slug);
+  if (!carrinho.ligado(rest)) throw new ErroApp(404, 'Função indisponível.');
+  const b = req.body || {}, tel = carrinho.digitos(b.tel);
+  if (tel.length < 10 || tel.length > 13) throw new ErroApp(400, 'Informe o WhatsApp com DDD.');
+  const itens = (Array.isArray(b.itens) ? b.itens : []).slice(0, 40).filter(i => i && uuidValido(String(i.produto))).map(i => ({ produto: String(i.produto), qtd: Math.max(1, Math.min(50, Math.trunc(numero(i.qtd, 1)))), escolhas: i.escolhas && typeof i.escolhas === 'object' ? i.escolhas : {} }));
+  if (!itens.length) throw new ErroApp(400, 'Carrinho vazio.');
+  const cod = await doRestaurante(rest.id, async c => {
+    const precos = new Map((await c.query('SELECT id, preco FROM produtos WHERE restaurante_id = $1 AND id = ANY($2::uuid[])', [rest.id, itens.map(i => i.produto)])).rows.map(x => [x.id, Number(x.preco)]));
+    const valid = itens.filter(i => precos.has(i.produto)); if (!valid.length) throw new ErroApp(400, 'Carrinho vazio.');
+    const total = valid.reduce((a, i) => a + precos.get(i.produto) * i.qtd, 0);
+    // só letras no nome (ele vai na mensagem do WhatsApp: nada de links)
+    const nome = (String(b.nome || '').normalize('NFC').match(/[\p{L}]+/u) || [''])[0].slice(0, 20);
+    const vals = [rest.id, nome, tel, JSON.stringify(valid), Math.round(total * 100) / 100];
+    const aberto = (await c.query('SELECT id, codigo FROM carrinhos WHERE restaurante_id = $1 AND tel = $2 AND lembrado_em IS NULL AND finalizado_em IS NULL FOR UPDATE', [rest.id, tel])).rows[0];
+    if (aberto) {
+      // só quem criou (tem o código) atualiza: ninguém troca o carrinho de outra pessoa digitando o WhatsApp dela
+      if (!iguais(aberto.codigo, String(b.codigo || ''))) return null;
+      await c.query('UPDATE carrinhos SET nome = $2, itens = $4, total = $5, atualizado_em = now() WHERE id = $6 AND restaurante_id = $1 AND tel = $3', vals.concat([aberto.id]));
+      return aberto.codigo;
+    }
+    const codigo = tokenAleatorio(18); // sempre um código novo (nunca o que veio do navegador)
+    await c.query('INSERT INTO carrinhos (restaurante_id, nome, tel, itens, total, codigo) VALUES ($1,$2,$3,$4,$5,$6)', vals.concat([codigo]));
+    return codigo;
+  });
+  res.json({ codigo: cod || undefined });
+}));
+r.delete('/r/:slug/carrinho/:codigo', limiteCarr, rota(async (req, res) => {
+  const rest = await carregar(req.params.slug);
+  await doRestaurante(rest.id, c => c.query('DELETE FROM carrinhos WHERE restaurante_id = $1 AND codigo = $2', [rest.id, texto(req.params.codigo, 40)]));
+  res.json({ ok: true });
+}));
+// Link do lembrete: devolve os itens do carrinho
+r.get('/r/:slug/carrinho/:codigo', limiteCarr, rota(async (req, res) => {
+  const rest = await carregar(req.params.slug);
+  const k = await doRestaurante(rest.id, async c => (await c.query("SELECT itens, nome, finalizado_em FROM carrinhos WHERE restaurante_id = $1 AND codigo = $2 AND criado_em > now() - interval '7 days'", [rest.id, texto(req.params.codigo, 40)])).rows[0]);
+  if (!k) throw new ErroApp(404, 'Este carrinho expirou.');
+  res.json({ itens: k.itens, finalizado: !!k.finalizado_em });
 }));
 
 // Conta da mesa: pedidos ainda não pagos das últimas 12 horas (o garçom "fecha a conta" no painel e ela zera)

@@ -457,3 +457,17 @@ footer .wrap{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap}
 .rpage .grid-r.mini .esg{font-size:11px}
 @media (max-width:1000px){.rpage{grid-template-columns:minmax(0,1fr)}}
 .rpage > div{min-width:0}
+
+/* termos e privacidade */
+.resumo .semcad.legal{opacity:.8;font-size:12px}
+.resumo .semcad a,.login .aceite a,.login .dica-c a{color:#fff;text-decoration:underline}
+.login .aceite{display:flex;gap:8px;align-items:flex-start;font-size:13.5px;line-height:1.35}
+.login .aceite input{width:18px;height:18px;margin:1px 0 0;flex:0 0 auto;accent-color:var(--brand,#E30613)}
+.login .dica-c{margin:-4px 0 0;font-size:12.5px;opacity:.8}
+.login .apagar{background:rgb(255 255 255 / .08);border-radius:10px;padding:10px 12px}
+.login .apagar summary{cursor:pointer;font-weight:800}
+.login .apagar p{font-size:13px;opacity:.85;margin:8px 0}
+.login .apagar .b2{width:100%;margin-top:8px;border:1px solid #ff8a8a;background:transparent;color:#ffb3b3;border-radius:10px;padding:11px;font-weight:800;cursor:pointer}
+.rodape-legal{display:flex;gap:14px;flex-wrap:wrap}
+.op.off{opacity:.5;cursor:default}
+.resumo .lembrar{display:flex;gap:8px;align-items:flex-start;font-size:13px;font-weight:600;line-height:1.35;margin-top:2px}.resumo .lembrar input{width:18px;height:18px;margin:1px 0 0;flex:0 0 auto}

@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow">
+<meta name="referrer" content="no-referrer">
+<title>Criar senha nova</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap">
+<link rel="stylesheet" href="/css/app.css">
+</head>
+<body>
+<div class="wrap">
+  <div class="login">
+    <div class="table-tag">Senha nova</div>
+    <h1>Criar senha nova</h1>
+    <p class="sub" id="sub">Conferindo o link…</p>
+    <form id="f-senha" class="card" novalidate hidden>
+      <label for="s-nova">Senha nova (mínimo 8 caracteres)</label><input id="s-nova" type="password" autocomplete="new-password" minlength="8" required>
+      <label for="s-conf">Repita a senha nova</label><input id="s-conf" type="password" autocomplete="new-password" minlength="8" required>
+      <label class="ck" for="s-ver" style="font-weight:600"><input type="checkbox" id="s-ver"> Mostrar a senha</label>
+      <div id="s-erro" class="erro" hidden></div>
+      <div class="row"><button class="btn" type="submit" id="s-btn">Salvar senha nova</button></div>
+    </form>
+    <div id="s-fim" class="card" hidden></div>
+  </div>
+</div>
+<script src="/js/comum.js"></script>
+<script src="/js/senha.js"></script>
+</body>
+</html>

@@ -3,7 +3,7 @@
 'use strict';
 const N = n => String(n == null ? '' : n).padStart(3, '0'); // número do pedido do dia: 001, 002…
 const { $, $$, esc, brl, pad, hora, ago, initials, toast, aplicarCor, foto, api, guardar, copiar, pagTxt, trocoTxt, ajudaSenha } = C;
-ajudaSenha('Cozinha ou entregador: peça ao dono do restaurante para criar uma senha nova para você (Painel → Equipe → Nova senha). Dono: fale com o suporte da plataforma, que define uma senha nova para você.');
+C.esqueciSenha('usuario');
 const SELOS = ['vegetariano', 'vegano', 'sem glúten'];
 const PAPEL = { dono: 'Dono', cozinha: 'Cozinha', entregador: 'Entregador' };
 const ABAS = {
@@ -34,16 +34,34 @@ $('#f-login').addEventListener('submit', async e => {
     const d = await api('POST', '/api/auth/login', { email: $('#l-email').value, senha: $('#l-senha').value });
     S.token = d.token; guardar.gravar('painel:token', d.token); S.eu = d.usuario; S.rest = d.restaurante; $('#l-senha').value = '';
     entrar();
-  } catch (err) { erro.hidden = false; erro.textContent = err.message; }
+  } catch (err) {
+    erro.hidden = false; erro.textContent = err.message;
+    // dono com o acesso suspenso por atraso: link direto para pagar a fatura
+    if (err.dados && err.dados.fatura){ const a = document.createElement('a'); a.className = 'btn sm'; a.style.marginTop = '8px'; a.style.display = 'inline-flex'; a.href = err.dados.fatura; a.textContent = 'Pagar a mensalidade agora'; erro.appendChild(document.createElement('br')); erro.appendChild(a); }
+  }
   btn.disabled = false; btn.textContent = 'Entrar';
 });
 function sair(msg){
   guardar.apagar('painel:token'); S.token = ''; if (S.socket) S.socket.close(); S.socket = null;
   mostrarLogin(); if (msg){ $('#l-erro').hidden = false; $('#l-erro').textContent = msg; }
 }
+// Aviso da mensalidade (só o dono vê): fatura em aberto perto do vencimento ou vencida
+async function avisoFatura(){
+  const el = $('#fat-aviso'); if (!el) return; el.hidden = true;
+  if (S.eu.papel !== 'dono') return;
+  try {
+    const d = await chamar('GET', '/api/painel/faturas'); S.faturas = d;
+    const f = (d.faturas || []).find(x => x.status === 'aberta'); if (!f) return;
+    const dt = f.vencimento.split('-').reverse().join('/');
+    el.className = f.atrasada ? 'warnbox fat-aviso crit' : 'warnbox fat-aviso';
+    el.innerHTML = '<span>' + (f.atrasada ? '<strong>Mensalidade vencida</strong> em ' + dt + ' (' + brl(f.valor) + '). Pague para o cardápio não ser suspenso.' : 'Mensalidade de ' + esc(f.mes) + ': <strong>' + brl(f.valor) + '</strong>, vence em ' + dt + '.') + '</span><a class="btn sm" href="' + esc(f.link) + '" target="_blank" rel="noopener">Pagar com Pix</a>';
+    el.hidden = false;
+  } catch (e) {}
+}
 function entrar(){
   aplicarCor(S.rest.cor);
   $('#v-login').hidden = true; $('#v-app').hidden = false;
+  avisoFatura();
   S.aba = abas()[0][0];
   conectarTempoReal();
   carregarPedidos().then(render);
@@ -75,6 +93,7 @@ function conectarTempoReal(){
   S.socket.on('chamado:atendido', c => { S.chamados = S.chamados.filter(x => x._id !== c._id); atualizarAbas(); });
   S.socket.on('chamado:atualizado', c => { if (S.eu.papel === 'entregador') return; const i = S.chamados.findIndex(x => x._id === c._id); if (i >= 0) S.chamados[i] = c; else S.chamados.push(c); bip(); toast('Mesa ' + pad(c.mesa) + (c.tipo === 'conta' ? ' atualizou o pedido de conta' : ' chamou o garçom de novo')); atualizarAbas(); });
   S.socket.on('nota:atualizada', n => { const p = S.pedidos.find(x => x._id === n.pedidoId); if (p) p.nota = n; if (S.aba === 'pedidos') renderPedidos(); if (S.aba === 'hist') carregarHist(); });
+  S.socket.on('pix:tarde', x => { if (S.eu.papel === 'entregador') return; bip(); toast('Atenção: o Pix do pedido #' + String(x.numero).padStart(3, '0') + ' (' + brl(x.total) + ') caiu depois do prazo e o pedido já estava cancelado. Devolva o valor ao cliente.'); });
   S.socket.on('estoque:alerta', l => { if (S.eu.papel === 'entregador') return; bip(); toast(l.map(x => x.nome + (x.acabou ? ' acabou' : ' acabando (' + qtdTxt(x.estoque, x.unidade) + ')')).join(' · ')); if (S.aba === 'estoque') renderEstoque(); });
 }
 function upsert(p){
@@ -250,6 +269,7 @@ function desenharProdutos(){
         '<label for="p-sug"><input type="checkbox" id="p-sug"' + (p && p.sugerir ? ' checked' : '') + '> Sugerir no carrinho (“Peça também”)</label></div>' +
       '<div class="grid2"><div><label for="p-o1t">Escolha obrigatória (título)</label><input id="p-o1t" placeholder="Ex.: Ponto da carne" value="' + esc(um ? um.nome : '') + '"></div><div><label for="p-o1c">Opções, separadas por vírgula</label><input id="p-o1c" placeholder="Mal passada, Ao ponto, Bem passada" value="' + esc(um ? um.escolhas.map(ch).join(', ') : '') + '"></div></div>' +
       '<label for="p-add">Adicionais pagos (um por linha: Nome | preço)</label><textarea id="p-add" rows="3" placeholder="Ovo frito | 4&#10;Queijo coalho | 9">' + esc(va ? va.escolhas.map(ch).join('\n') : '') + '</textarea>' +
+      blocoCombo(p, cats) + blocoHorario(p) +
       '<details class="sub-card"' + (p && p.ficha && p.ficha.length ? ' open' : '') + '><summary>Ficha técnica e lucro <small class="note">(opcional: baixa o estoque sozinho e mostra quanto o prato dá de lucro)</small></summary>' +
         (S.insumos.length ? '<div id="ficha-l"></div><div class="row" style="margin:6px 0 0"><button type="button" class="btn sm ghost" data-act="fi-mais">+ Insumo</button></div><p class="note" id="fi-custo"></p>'
           : '<p class="note">Cadastre os insumos na aba Estoque (ex.: mussarela, pão, batata) para montar a ficha deste prato.</p>') + '</details>' +
@@ -263,7 +283,7 @@ function desenharProdutos(){
   const lista = cats.map((c, ci) => { const l = S.produtos.filter(x => x.categoria === c); if (!l.length) return '';
     return '<p class="table-tag" style="margin:16px 0 0">' + esc(c) + '</p>' + l.map(x => '<div class="adm-item"><div class="ph">' + foto(x, ci) + '</div><div><strong>' + esc(x.nome) + '</strong>' +
       (dono ? '<div class="pr-row"><label class="pr-l" for="pr' + x._id + '">R$</label><input class="pr-in" id="pr' + x._id + '" type="number" step="0.01" min="0" data-preco="' + x._id + '" value="' + x.preco + '" aria-label="Preço de ' + esc(x.nome) + '"></div>' : '<div class="price">' + brl(x.preco) + '</div>') +
-      '<small>' + (x.esgotado ? 'Esgotado' : (x.semEstoque || []).length ? 'Fora do cardápio' : 'Disponível') + (x.destaque ? ' · Destaque' : '') + (x.sugerir ? ' · Peça também' : '') + (x.opcoes.length ? ' · com opções' : '') + '</small>' +
+      '<small>' + (x.esgotado ? 'Esgotado' : (x.semEstoque || []).length ? 'Fora do cardápio' : 'Disponível') + (x.destaque ? ' · Destaque' : '') + (x.sugerir ? ' · Peça também' : '') + (x.disponibilidade && (S.rest.recursos || {}).horarios ? ' · Só ' + DIAS_TXT(x.disponibilidade) : '') + ((x.opcoes || []).some(o => o.tipo === 'combo') ? ' · Combo' : (x.opcoes || []).some(o => o.tipo === 'sabores') ? ' · Meio a meio' : '') + (x.opcoes.length ? ' · com opções' : '') + '</small>' +
       (dono && x.custo != null ? '<small class="lucro">Custo ' + brl(x.custo) + ' · lucro ' + brl(x.preco - x.custo) + ' (' + pct(x.preco ? (x.preco - x.custo) / x.preco * 100 : 0) + ')</small>' : '') +
       ((x.semEstoque || []).length ? '<span class="badge b-crit" style="margin-top:4px">Sem estoque de ' + esc(x.semEstoque.join(', ')) + '</span>' : '') + '</div><div class="row">' +
       (dono ? '<button class="btn sm ghost" data-act="editar-prod" data-id="' + x._id + '">Editar</button>' : '') +
@@ -322,6 +342,45 @@ async function enviarFoto(input){
   lab.textContent = txt; lab.classList.remove('disabled'); input.value = '';
 }
 
+/* Produto por horário (função extra) */
+const DIAS_S = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
+const DIAS_TXT = d => (d.dias.length === 7 ? 'todos os dias' : d.dias.join() === '1,2,3,4,5' ? 'seg a sex' : d.dias.map(i => DIAS_S[i].toLowerCase()).join(', ')) + ' ' + d.de + '–' + d.ate;
+function blocoHorario(p){
+  if (!(S.rest.recursos || {}).horarios) return '';
+  const d = p && p.disponibilidade, on = !!d, dias = d ? d.dias : [1, 2, 3, 4, 5];
+  return '<details class="sub-card"' + (on ? ' open' : '') + '><summary>Horário do produto <small class="note">(ex.: café da manhã até 11h, executivo de segunda a sexta)</small></summary>' +
+    '<div class="checks"><label for="p-hr"><input type="checkbox" id="p-hr"' + (on ? ' checked' : '') + '> Vender só em alguns dias e horários</label></div>' +
+    '<div class="checks">' + DIAS_S.map((n, i) => '<label for="p-hd' + i + '"><input type="checkbox" id="p-hd' + i + '" data-hdia="' + i + '"' + (dias.includes(i) ? ' checked' : '') + '> ' + n + '</label>').join('') + '</div>' +
+    '<div class="grid2"><div><label for="p-hde">Das</label><input id="p-hde" type="time" value="' + esc(d ? d.de : '11:00') + '"></div><div><label for="p-hate">Até</label><input id="p-hate" type="time" value="' + esc(d ? d.ate : '15:00') + '"></div></div>' +
+    '<p class="note">Fora do horário o produto aparece como indisponível no site, no salão e no totem. Pode passar da meia-noite (ex.: 22:00 até 02:00).</p></details>';
+}
+function horarioDoForm(){
+  if (!$('#p-hr')) return undefined;
+  if (!$('#p-hr').checked) return null;
+  return { dias: $$('[data-hdia]').filter(x => x.checked).map(x => +x.dataset.hdia), de: $('#p-hde').value, ate: $('#p-hate').value };
+}
+/* Combo e meio a meio (função extra: só aparece quando a equipe de devs libera) */
+function blocoCombo(p, cats){
+  if (!(S.rest.recursos || {}).combos) return '';
+  const cb = p ? p.opcoes.filter(o => o.tipo === 'combo') : [], sb = p ? p.opcoes.find(o => o.tipo === 'sabores') : null;
+  const tipo = S.tipoComb || (sb ? 'sabores' : cb.length ? 'combo' : 'nenhum');
+  const outras = cats.filter(c => !p || c !== p.categoria);
+  return '<details class="sub-card"' + (tipo !== 'nenhum' ? ' open' : '') + '><summary>Combo ou meio a meio <small class="note">(o cliente escolhe itens de outra categoria)</small></summary>' +
+    '<div class="seg" role="group" aria-label="Tipo"><button type="button" data-act="tipo-comb" data-t="nenhum" aria-pressed="' + (tipo === 'nenhum') + '">Produto normal</button><button type="button" data-act="tipo-comb" data-t="combo" aria-pressed="' + (tipo === 'combo') + '">Combo</button><button type="button" data-act="tipo-comb" data-t="sabores" aria-pressed="' + (tipo === 'sabores') + '">Meio a meio</button></div>' +
+    '<input type="hidden" id="p-tc" value="' + tipo + '">' +
+    (tipo === 'combo' ? '<label for="p-cb">O que o cliente escolhe (um grupo por linha: Categoria | quantidade)</label><textarea id="p-cb" rows="3" placeholder="Hambúrgueres | 1&#10;Bebidas | 1">' + esc(cb.map(o => o.categoria + ' | ' + (o.qtd || 1)).join('\n')) + '</textarea>' +
+      '<p class="note">Categorias: ' + esc(outras.join(', ')) + '. Os itens já estão incluídos no preço do combo. Coloque o combo numa categoria própria (ex.: “Combos”).</p>' : '') +
+    (tipo === 'sabores' ? '<div class="grid3"><div><label for="p-sbc">Sabores da categoria</label><select id="p-sbc">' + outras.map(c => '<option' + (sb && sb.categoria === c ? ' selected' : '') + '>' + esc(c) + '</option>').join('') + '</select></div>' +
+      '<div><label for="p-sbm">Até quantos sabores</label><select id="p-sbm">' + [2, 3, 4].map(n => '<option' + ((sb ? sb.max : 2) === n ? ' selected' : '') + '>' + n + '</option>').join('') + '</select></div>' +
+      '<div><label for="p-sbr">Preço</label><select id="p-sbr"><option value="maior"' + (!sb || sb.regra !== 'media' ? ' selected' : '') + '>Do sabor mais caro</option><option value="media"' + (sb && sb.regra === 'media' ? ' selected' : '') + '>Média dos sabores</option></select></div></div>' +
+      '<p class="note">Ex.: produto “Pizza grande meio a meio” com preço R$ 0 e sabores da categoria “Pizzas”: o cliente escolhe 2 sabores e paga o preço do mais caro. Se o preço do produto for maior que zero, ele é somado (borda, tamanho).</p>' : '') + '</details>';
+}
+function opcoesCombo(){
+  const t = $('#p-tc') ? $('#p-tc').value : 'nenhum';
+  if (t === 'combo') return String($('#p-cb').value || '').split('\n').map(l => l.split('|').map(x => x.trim())).filter(a => a[0]).map(a => ({ tipo: 'combo', nome: 'Escolha ' + (a[0].toLowerCase()), categoria: a[0], qtd: Math.max(1, parseInt(a[1], 10) || 1) }));
+  if (t === 'sabores' && $('#p-sbc') && $('#p-sbc').value) return [{ tipo: 'sabores', nome: 'Sabores', categoria: $('#p-sbc').value, max: +$('#p-sbm').value, regra: $('#p-sbr').value }];
+  return [];
+}
 function escolhas(str, sep){ return String(str || '').split(sep).map(s => s.trim()).filter(Boolean).map(s => { const a = s.split('|'); return { nome: a[0].trim(), preco: Math.max(0, parseFloat(String(a[1] || '0').replace(',', '.')) || 0) }; }).filter(e => e.nome); }
 async function salvarProduto(e){
   e.preventDefault();
@@ -329,17 +388,19 @@ async function salvarProduto(e){
   const opcoes = []; const t1 = $('#p-o1t').value.trim(), c1 = escolhas($('#p-o1c').value, ',');
   if (t1 && c1.length) opcoes.push({ nome: t1, tipo: 'um', escolhas: c1 });
   const ad = escolhas($('#p-add').value, /\n/); if (ad.length) opcoes.push({ nome: 'Adicionais', tipo: 'varios', escolhas: ad });
+  opcoesCombo().forEach(o => opcoes.unshift(o)); // grupos do combo/meio a meio vêm antes das outras escolhas
   const atual = S.editId ? S.produtos.find(x => x._id === S.editId) : null;
   const corpo = { nome: $('#p-nome').value, preco: $('#p-preco').value, descricao: $('#p-desc').value, categoria: cat, fotoUrl: $('#p-foto').value,
     selos: $$('#f-prod [data-selo]').filter(x => x.checked).map(x => x.dataset.selo), destaque: $('#p-dest').checked, sugerir: $('#p-sug').checked, esgotado: atual ? atual.esgotado : false, opcoes,
     fiscal: $('#p-ncm') ? { ncm: $('#p-ncm').value, cfop: $('#p-cfop').value, csosn: $('#p-csosn').value } : (atual ? atual.fiscal : {}) };
+  const hr = horarioDoForm(); if (hr !== undefined) corpo.disponibilidade = hr;
   const ficha = S.ficha ? S.ficha.filter(f => f.insumo && parseFloat(f.qtd) > 0).map(f => ({ insumo: f.insumo, qtd: f.qtd })) : null;
   try {
     const d = S.editId ? await chamar('PUT', '/api/painel/produtos/' + S.editId, corpo) : await chamar('POST', '/api/painel/produtos', corpo);
     if (ficha && S.insumos.length && (ficha.length || (atual && atual.ficha && atual.ficha.length))) await chamar('PUT', '/api/painel/produtos/' + d.produto.id + '/ficha', { itens: ficha });
     toast(S.editId ? 'Produto atualizado' : 'Produto adicionado ao cardápio');
     if (S.config && cat && !S.config.categorias.includes(cat)) S.config.categorias.push(cat);
-    S.editId = null; S.formAberto = false; renderProdutos();
+    S.editId = null; S.formAberto = false; S.tipoComb = null; renderProdutos();
   } catch (err) { toast(err.message); }
 }
 
@@ -403,7 +464,7 @@ async function renderMesas(){
   desenharMesas();
 }
 function desenharMesas(){
-  const rc = S.rest.recursos || {}, base = location.origin + '/r/' + S.rest.slug, salao = base + '/salao';
+  const rc = S.rest.recursos || {}, base = S.rest.dominio ? 'https://' + S.rest.dominio : location.origin + '/r/' + S.rest.slug, salao = base + '/salao';
   const link = (url, txt) => '<div class="code">' + esc(url) + '</div><div class="row"><button class="btn sm" data-act="copiar" data-v="' + esc(url) + '">Copiar link</button><a class="btn sm ghost" href="' + esc(url) + '" target="_blank" rel="noopener">' + (txt || 'Abrir') + '</a></div>';
   const totemUrl = S.totem ? base + '/totem?t=' + encodeURIComponent(S.totem) + (S.totemImp ? '&imprimir=1' : '') : '';
   const blocoTotem = rc.totem === false ? '' : '<h3>Modo totem (autoatendimento no balcão)</h3><div class="card dlink"><div class="qrc">' + qrSvg(totemUrl) + '<strong>Totem</strong><span>aponte a câmera do tablet</span></div><div style="flex:1;min-width:0">' +
@@ -441,7 +502,7 @@ async function renderEquipe(){
 /* ---------- configurações ---------- */
 async function renderConfig(){
   $('#pane').innerHTML = '<p class="note">Carregando…</p>';
-  try { const r = await chamar('GET', '/api/painel/restaurante'); S.config = r.restaurante; S.fiscalProvedor = r.fiscalProvedor; S.cfgBusca = r.buscaEndereco; } catch (e) { $('#pane').innerHTML = '<p class="erro">' + esc(e.message) + '</p>'; return; }
+  try { const r = await chamar('GET', '/api/painel/restaurante'); S.config = r.restaurante; S.fiscalProvedor = r.fiscalProvedor; S.cfgBusca = r.buscaEndereco; S.pixDemo = r.pixDemo; S.urlBase = r.urlBase; } catch (e) { $('#pane').innerHTML = '<p class="erro">' + esc(e.message) + '</p>'; return; }
   const c = S.config, d = c.delivery;
   const inp = (id, lab, v, extra) => '<div><label for="' + id + '">' + lab + '</label><input id="' + id + '" value="' + esc(v) + '"' + (extra || '') + '></div>';
   $('#pane').innerHTML = '<form id="f-config" novalidate><h3>Identidade</h3><div class="card"><div class="grid2">' + inp('c-nome', 'Nome do restaurante', c.nome) + inp('c-frase', 'Frase curta', c.frase) +
@@ -467,8 +528,52 @@ async function renderConfig(){
       '<div class="grid3">' + inp('c-ag-ant', 'Antecedência mínima (minutos)', c.agendamento.antecedencia, ' type="number" min="15" max="1440"') + inp('c-ag-dias', 'Até quantos dias à frente', c.agendamento.dias, ' type="number" min="0" max="7"') + inp('c-ag-prep', 'Mostrar na cozinha quantos minutos antes', c.agendamento.preparo, ' type="number" min="10" max="240"') + '</div>' +
       '<p class="note">Os horários são de 30 em 30 minutos, dentro do horário de funcionamento. Com o restaurante fechado, o cliente ainda consegue agendar para quando abrir.</p></div>' +
     (temNfce() ? blocoFiscal(c) : '') +
-    '<div class="row"><button class="btn" type="submit">Salvar configurações</button></div></form>';
+    '<div class="row"><button class="btn" type="submit">Salvar configurações</button></div></form>' +
+    blocoPix(c) + '<div id="carr-cfg"></div>';
   montarMapaConfig();
+  if ((c.recursos || {}).carrinho) blocoCarrinho();
+}
+async function blocoCarrinho(){
+  const el = $('#carr-cfg'); if (!el) return;
+  try {
+    const d = await chamar('GET', '/api/painel/carrinho');
+    el.innerHTML = '<form id="f-carr" novalidate><h3>Lembrete de carrinho no WhatsApp</h3><div class="card">' +
+      '<p class="note" style="margin-top:0">Quem monta o pedido no site, informa o WhatsApp e marca “Pode me lembrar” recebe <strong>uma</strong> mensagem com o link do carrinho, se não finalizar. A mesma pessoa recebe no máximo um lembrete por semana.</p>' +
+      (!d.whatsapp ? '<p class="warnbox">O envio de WhatsApp está desligado no servidor (WHATSAPP_PROVEDOR). Os carrinhos ficam guardados, mas nenhuma mensagem sai.</p>' : '') +
+      '<div class="grid3"><div><label for="cr-min">Mandar o lembrete depois de (minutos)</label><input id="cr-min" type="number" min="10" max="720" value="' + d.minutos + '"></div>' +
+      '<div><label>Lembretes enviados</label><p style="margin:6px 0;font-size:22px;font-weight:900">' + d.enviados + '</p></div><div><label>Pedidos recuperados</label><p style="margin:6px 0;font-size:22px;font-weight:900">' + d.recuperados + (d.enviados ? ' <small class="note">(' + Math.round(d.recuperados / d.enviados * 100) + '%)</small>' : '') + '</p></div></div>' +
+      '<div class="row"><button class="btn" type="submit">Salvar lembrete</button></div></div></form>';
+  } catch (e) { el.innerHTML = ''; }
+}
+/* Pix automático: o dono liga a conta do Mercado Pago dele (o dinheiro cai direto na conta do restaurante) */
+function blocoPix(c){
+  const rc = c.recursos || {};
+  if (rc.pixauto === false || rc.pix === false) return '';
+  const pa = c.pixAuto || {}, prov = S.pixProv || pa.provedor || 'mercadopago';
+  const wh = S.urlBase && /^https:/.test(S.urlBase) && pa.chaveWebhook ? S.urlBase + '/api/pix/webhook/' + pa.chaveWebhook : '';
+  return '<form id="f-pix" novalidate><h3>Pix automático</h3><div class="card">' +
+    '<p class="note" style="margin-top:0">O cliente paga pelo QR Code ou Pix copia e cola e o pedido entra <strong>pago</strong> sozinho, sem conferir comprovante. Vale para o site, o balcão do salão e o totem (na mesa, a conta continua no fim). O dinheiro cai direto na conta do restaurante no Mercado Pago.</p>' +
+    '<div class="checks"><label for="px-ativo"><input type="checkbox" id="px-ativo"' + (pa.ativo ? ' checked' : '') + '> Ligar o Pix automático</label></div>' +
+    (S.pixDemo ? '<label>Conta</label><div class="seg" role="group" aria-label="Conta do Pix"><button type="button" data-act="px-prov" data-p="mercadopago" aria-pressed="' + (prov === 'mercadopago') + '">Mercado Pago</button><button type="button" data-act="px-prov" data-p="demo" aria-pressed="' + (prov === 'demo') + '">Demonstração</button></div>' : '') +
+    (prov === 'demo' ? '<p class="warnbox">Demonstração: o QR não tem valor e a tela do cliente mostra um botão "Simular pagamento". Use para apresentar o sistema.</p>' :
+      '<label for="px-token">Access Token do Mercado Pago</label><input id="px-token" type="password" autocomplete="off" placeholder="' + (pa.tokenConfigurado ? '•••••• já configurado (cole outro para trocar)' : 'APP_USR-…') + '">' +
+      '<p class="note">No Mercado Pago: <strong>Seu negócio → Configurações → Credenciais</strong> (ou mercadopago.com.br/developers → Suas integrações → Credenciais de produção) e copie o <strong>Access Token</strong>. A conta precisa ter uma chave Pix cadastrada. O token fica guardado no servidor e não aparece de novo.</p>' +
+      (pa.tokenConfigurado ? '<div class="row" style="margin:6px 0"><button type="button" class="btn sm ghost" data-act="px-testar">Testar a conta</button><label class="ck" for="px-apagar" style="font-weight:600"><input type="checkbox" id="px-apagar"> Remover o token</label></div><p class="note" id="px-teste"></p>' : '') +
+      '<details style="margin-top:8px"><summary style="cursor:pointer;font-weight:700">Aviso automático do Mercado Pago (recomendado)</summary>' +
+      (wh ? '<p class="note">Em <strong>Suas integrações → Webhooks</strong>, cadastre este endereço e marque o evento <strong>Pagamentos</strong>. Assim o pedido entra no mesmo segundo. Sem ele, o sistema confere sozinho a cada 20 segundos.</p><div class="code">' + esc(wh) + '</div><div class="row"><button type="button" class="btn sm" data-act="copiar" data-v="' + esc(wh) + '">Copiar endereço</button></div>'
+        : '<p class="note">O endereço do aviso aparece aqui depois de salvar (precisa do site com https). Sem ele, o sistema confere os pagamentos sozinho a cada 20 segundos.</p>') +
+      '<label for="px-segredo">Assinatura secreta do webhook (opcional)</label><input id="px-segredo" type="password" autocomplete="off" placeholder="' + (pa.segredoConfigurado ? '•••••• já configurada' : 'Cole a assinatura secreta, se quiser') + '"></details>') +
+    '<div class="row"><button class="btn" type="submit">Salvar Pix automático</button></div></div></form>';
+}
+async function salvarPix(e){
+  e.preventDefault();
+  const prov = S.pixProv || (S.config.pixAuto || {}).provedor || 'mercadopago', corpo = { ativo: $('#px-ativo').checked, provedor: prov };
+  const tk = $('#px-token') ? $('#px-token').value.trim() : '', sg = $('#px-segredo') ? $('#px-segredo').value.trim() : '';
+  if (tk) corpo.token = tk; if (sg) corpo.segredo = sg;
+  if ($('#px-apagar') && $('#px-apagar').checked){ corpo.token = ''; corpo.ativo = false; }
+  const b = e.target.querySelector('[type=submit]'); b.disabled = true; b.textContent = tk ? 'Conferindo a conta…' : 'Salvando…';
+  try { S.config = (await chamar('PUT', '/api/painel/pix', corpo)).restaurante; S.pixProv = null; toast(corpo.ativo ? 'Pix automático ligado' : 'Pix automático salvo (desligado)'); renderConfig(); }
+  catch (err) { toast(err.message); b.disabled = false; b.textContent = 'Salvar Pix automático'; }
 }
 function blocoFiscal(c){
   const f = c.fiscal || {}, demo = S.fiscalProvedor === 'demo';
@@ -721,8 +826,8 @@ document.addEventListener('click', async e => {
     case 'pago': try { const d = await chamar('PATCH', '/api/painel/pedidos/' + id + '/pagamento', { pago: true }); upsert(d.pedido); atualizarAbas(); toast('Pagamento confirmado'); } catch (err) { toast(err.message); } break;
     case 'cancelar': if (S.confirmar !== 'c' + id){ S.confirmar = 'c' + id; renderPedidos(); break; } S.confirmar = null; mudarStatus(id, 'cancelado'); break;
     case 'atendido': try { await chamar('PATCH', '/api/painel/chamados/' + id); S.chamados = S.chamados.filter(c => c._id !== id); atualizarAbas(); } catch (err) { toast(err.message); } break;
-    case 'novo-prod': S.formAberto = true; S.editId = null; desenharProdutos(); break;
-    case 'editar-prod': S.editId = id; S.formAberto = false; desenharProdutos(); window.scrollTo(0, 0); break;
+    case 'novo-prod': S.formAberto = true; S.editId = null; S.tipoComb = null; desenharProdutos(); break;
+    case 'editar-prod': S.editId = id; S.formAberto = false; S.tipoComb = null; desenharProdutos(); window.scrollTo(0, 0); break;
     case 'cancelar-prod': S.editId = null; S.formAberto = false; desenharProdutos(); break;
     case 'esgotar': { const p = S.produtos.find(x => x._id === id); try { const d = await chamar('PATCH', '/api/painel/produtos/' + id, { esgotado: !p.esgotado }); Object.assign(p, d.produto); desenharProdutos(); toast(p.esgotado ? p.nome + ' marcado como esgotado' : p.nome + ' disponível de novo'); } catch (err) { toast(err.message); } break; }
     case 'remover-prod': if (S.confirmar !== 'p' + id){ S.confirmar = 'p' + id; desenharProdutos(); break; } S.confirmar = null; try { await chamar('DELETE', '/api/painel/produtos/' + id); S.produtos = S.produtos.filter(x => x._id !== id); desenharProdutos(); toast('Produto removido'); } catch (err) { toast(err.message); } break;
@@ -737,6 +842,9 @@ document.addEventListener('click', async e => {
     case 'abrir-senha': $('#f-senha').hidden = false; $('#s-atual').focus(); break;
     case 'fechar-senha': $('#f-senha').hidden = true; $('#f-senha').reset(); break;
     case 'add-mesas': { const q = Math.trunc(+$('#m-add').value || 0), antes = S.mesas.length; if (q < 1){ toast('Informe quantas mesas quer adicionar.'); break; } el.disabled = true; try { S.mesas = (await chamar('POST', '/api/painel/mesas', { quantidade: antes + q })).mesas; S.novasMesas = antes; toast((q === 1 ? '1 mesa adicionada' : q + ' mesas adicionadas') + ': imprima os QR novos.'); desenharMesas(); const nv = $('.qrc.novo'); if (nv) nv.scrollIntoView({ behavior: 'smooth', block: 'center' }); } catch (err) { toast(err.message); el.disabled = false; } break; }
+    case 'px-prov': { const keep = $('#px-ativo') ? $('#px-ativo').checked : false; S.pixProv = el.dataset.p; const f = $('#f-pix'); if (f){ f.outerHTML = blocoPix(S.config); $('#px-ativo').checked = keep; } break; }
+    case 'px-testar': { const o = $('#px-teste'); o.textContent = 'Conferindo…'; try { const d = await chamar('POST', '/api/painel/pix/testar'); o.textContent = 'Conta conectada: ' + (d.conta || '') + (d.email ? ' · ' + d.email : ''); } catch (err) { o.textContent = err.message; } break; }
+    case 'tipo-comb': { S.tipoComb = el.dataset.t; const d = el.closest('details'); const p = S.editId ? S.produtos.find(x => x._id === S.editId) : null; if (d){ d.outerHTML = blocoCombo(p, categorias()); } break; }
     case 'fechar-conta': { const n = el.dataset.n; el.disabled = true; try { const d = await chamar('POST', '/api/painel/mesas/' + n + '/fechar-conta'); toast('Conta da Mesa ' + pad(n) + ' fechada: ' + d.pedidos + (d.pedidos === 1 ? ' pedido, ' : ' pedidos, ') + brl(d.total)); } catch (err) { toast(err.message); el.disabled = false; } break; }
     case 'nfce': abrirNfce(id); break;
     case 'nota-cancelar': abrirCancelarNota(id); break;
@@ -782,6 +890,8 @@ document.addEventListener('keydown', e => { if (e.key === 'Escape' && $('#modal'
 document.addEventListener('submit', async e => {
   if (e.target.id === 'f-prod') return salvarProduto(e);
   if (e.target.id === 'f-config') return salvarConfig(e);
+  if (e.target.id === 'f-pix') return salvarPix(e);
+  if (e.target.id === 'f-carr'){ e.preventDefault(); try { await chamar('PUT', '/api/painel/carrinho', { minutos: $('#cr-min').value }); toast('Lembrete salvo'); blocoCarrinho(); } catch (err) { toast(err.message); } return; }
   if (e.target.id === 'f-nfce'){ e.preventDefault(); return emitirNfce(e.target); }
   if (e.target.id === 'f-nfc'){ e.preventDefault(); return cancelarNota(e.target); }
   if (e.target.id === 'f-mov'){
@@ -801,7 +911,7 @@ document.addEventListener('submit', async e => {
   }
   if (e.target.id === 'f-senha'){
     e.preventDefault();
-    try { await chamar('POST', '/api/auth/senha', { atual: $('#s-atual').value, nova: $('#s-nova').value }); e.target.reset(); e.target.hidden = true; toast('Senha trocada'); }
+    try { const d = await chamar('POST', '/api/auth/senha', { atual: $('#s-atual').value, nova: $('#s-nova').value }); if (d.token){ S.token = d.token; guardar.gravar('painel:token', d.token); } e.target.reset(); e.target.hidden = true; toast('Senha trocada. Os outros aparelhos precisam entrar de novo.'); }
     catch (err) { toast(err.message); } return;
   }
   if (e.target.id === 'f-user'){

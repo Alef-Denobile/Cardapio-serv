@@ -1,4 +1,5 @@
 const { mascararCpf } = require('./util');
+const { recursosDaLinha } = require('./recursos');
 // Consultas ao banco e conversão das linhas do PostgreSQL para o formato que as telas usam.
 // Todas as funções recebem "c": a conexão da transação aberta por doRestaurante() ou sistema().
 
@@ -13,7 +14,10 @@ function restObj(r, bairros) {
     agendamento: { ativo: !!r.agendar_ativo, antecedencia: r.agendar_antecedencia || 60, dias: r.agendar_dias == null ? 2 : r.agendar_dias, preparo: r.agendar_preparo || 45 },
     fiscal: Object.assign({}, r.fiscal || {}, { tokenConfigurado: !!r.fiscal_token }), totemToken: r.totem_token || '',
     ativo: r.ativo, plano: r.plano, observacoes: r.observacoes, motivoSuspensao: r.motivo_suspensao,
-    recursos: { mesa: r.rec_mesa, chamados: r.rec_chamados, retirada: r.rec_retirada, delivery: r.rec_delivery, pix: r.rec_pix, cartao: r.rec_cartao, dinheiro: r.rec_dinheiro, vitrine: r.rec_vitrine, online: r.rec_online, whatsapp: r.rec_whatsapp, totem: r.rec_totem, nfce: r.rec_nfce },
+    recursos: recursosDaLinha(r),
+    pixAuto: { ativo: !!(r.pix_auto || {}).ativo, provedor: (r.pix_auto || {}).provedor || 'mercadopago', tokenConfigurado: !!r.pix_token, segredoConfigurado: !!r.pix_segredo, chaveWebhook: r.pix_chave_webhook || '' },
+    cobranca: Object.assign({ ativa: false, valor: 0, dia: 10, tolerancia: 5 }, r.cobranca || {}), suspensoCobranca: !!r.suspenso_cobranca,
+    carrinhoMin: r.carrinho_min || 30, dominio: r.dominio || '',
     categoriaVitrine: r.categoria_vitrine || '', capaUrl: r.capa_url || '', sobre: r.sobre || '',
     createdAt: r.criado_em
   };
@@ -58,19 +62,19 @@ async function adicionarCategoria(c, rid, cat) {
 
 /* ---------- produtos ---------- */
 function produtoObj(p) {
-  return { id: p.id, _id: p.id, categoria: p.categoria, nome: p.nome, descricao: p.descricao, preco: p.preco, selos: p.selos || [], opcoes: p.opcoes || [], fotoUrl: p.foto_url, esgotado: p.esgotado, destaque: p.destaque, sugerir: !!p.sugerir, fiscal: p.fiscal || {}, ordem: p.ordem, createdAt: p.criado_em };
+  return { id: p.id, _id: p.id, categoria: p.categoria, nome: p.nome, descricao: p.descricao, preco: p.preco, selos: p.selos || [], opcoes: p.opcoes || [], fotoUrl: p.foto_url, esgotado: p.esgotado, destaque: p.destaque, sugerir: !!p.sugerir, fiscal: p.fiscal || {}, disponibilidade: p.disponibilidade || null, ordem: p.ordem, createdAt: p.criado_em };
 }
 async function listarProdutos(c, rid) {
   return (await c.query('SELECT * FROM produtos WHERE restaurante_id = $1 ORDER BY categoria, ordem, criado_em', [rid])).rows.map(produtoObj);
 }
 async function criarProduto(c, rid, d) {
-  const r = await c.query('INSERT INTO produtos (restaurante_id, categoria, nome, descricao, preco, selos, opcoes, foto_url, esgotado, destaque, sugerir, fiscal) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *',
-    [rid, d.categoria, d.nome, d.descricao, d.preco, d.selos, JSON.stringify(d.opcoes), d.fotoUrl, d.esgotado, d.destaque, !!d.sugerir, JSON.stringify(d.fiscal || {})]);
+  const r = await c.query('INSERT INTO produtos (restaurante_id, categoria, nome, descricao, preco, selos, opcoes, foto_url, esgotado, destaque, sugerir, fiscal, disponibilidade) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING *',
+    [rid, d.categoria, d.nome, d.descricao, d.preco, d.selos, JSON.stringify(d.opcoes), d.fotoUrl, d.esgotado, d.destaque, !!d.sugerir, JSON.stringify(d.fiscal || {}), d.disponibilidade ? JSON.stringify(d.disponibilidade) : null]);
   return produtoObj(r.rows[0]);
 }
 async function atualizarProduto(c, rid, id, d) {
-  const r = await c.query('UPDATE produtos SET categoria=$3, nome=$4, descricao=$5, preco=$6, selos=$7, opcoes=$8, foto_url=$9, esgotado=$10, destaque=$11, sugerir=$12, fiscal=$13 WHERE id=$1 AND restaurante_id=$2 RETURNING *',
-    [id, rid, d.categoria, d.nome, d.descricao, d.preco, d.selos, JSON.stringify(d.opcoes), d.fotoUrl, d.esgotado, d.destaque, !!d.sugerir, JSON.stringify(d.fiscal || {})]);
+  const r = await c.query('UPDATE produtos SET categoria=$3, nome=$4, descricao=$5, preco=$6, selos=$7, opcoes=$8, foto_url=$9, esgotado=$10, destaque=$11, sugerir=$12, fiscal=$13, disponibilidade = CASE WHEN $15 THEN $14::jsonb ELSE disponibilidade END WHERE id=$1 AND restaurante_id=$2 RETURNING *',
+    [id, rid, d.categoria, d.nome, d.descricao, d.preco, d.selos, JSON.stringify(d.opcoes), d.fotoUrl, d.esgotado, d.destaque, !!d.sugerir, JSON.stringify(d.fiscal || {}), d.disponibilidade ? JSON.stringify(d.disponibilidade) : null, d.disponibilidade !== undefined]);
   return r.rows[0] ? produtoObj(r.rows[0]) : null;
 }
 async function ajustarProduto(c, rid, id, mud) {
@@ -99,7 +103,9 @@ function pedidoObj(p, linhas, hist, opc) {
     agendadoPara: p.agendado_para || null, origem: p.origem || 'site', consumo: p.consumo || null,
     linhas: (linhas || []).map(l => ({ produto: l.produto_id, nome: l.nome, qtd: l.qtd, unit: l.unit, opcoes: l.opcoes || [], custo: l.custo })),
     obs: p.obs, subtotal: p.subtotal, servico: p.servico, taxaEntrega: p.taxa_entrega, total: p.total,
-    pagamento: { metodo: p.pag_metodo, troco: p.pag_troco, pago: p.pag_pago, online: p.pag_metodo === 'online' ? (p.pag_status || 'pendente') : undefined },
+    pagamento: { metodo: p.pag_metodo, troco: p.pag_troco, pago: p.pag_pago, online: p.pag_metodo === 'online' ? (p.pag_status || 'pendente') : undefined,
+      pixAuto: p.pag_metodo === 'pix' && p.pag_status ? p.pag_status : undefined,
+      pix: p.pag_metodo === 'pix' && p.pix_qr && p.status === 'aguardando' ? { copiaECola: p.pix_qr, expiraEm: p.pix_expira, demo: /^demo-/.test(p.pag_ref || '') } : undefined },
     entregador: p.entregador_nome ? { id: p.entregador_id, nome: p.entregador_nome } : undefined,
     historico: (hist || []).map(h => ({ status: h.status, em: h.em, por: h.por })),
     clienteId: p.cliente_id || null, createdAt: p.criado_em, criadoEm: p.criado_em
@@ -129,7 +135,7 @@ async function criarPedido(c, rid, d) {
       agendado_para, entrega_lat, entrega_lng, entrega_km, origem, consumo, dia)
     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29) RETURNING *`,
     [rid, num, d.tipo, d.mesa, d.cliente.nome, d.cliente.tel, d.entrega ? e.endereco : null, d.entrega ? e.complemento : null, d.entrega ? e.referencia : null, d.entrega ? e.bairro : null,
-      d.obs, d.subtotal, d.servico, d.taxaEntrega, d.total, d.pagamento.metodo, d.pagamento.troco, d.codigoAcomp, d.clienteId || null, d.cliente.cpf || null, d.status || 'novo', d.pagamento.metodo === 'online' ? 'pendente' : null,
+      d.obs, d.subtotal, d.servico, d.taxaEntrega, d.total, d.pagamento.metodo, d.pagamento.troco, d.codigoAcomp, d.clienteId || null, d.cliente.cpf || null, d.status || 'novo', d.pagamento.status || (d.pagamento.metodo === 'online' ? 'pendente' : null),
       d.agendadoPara || null, d.entrega && e.lat != null ? e.lat : null, d.entrega && e.lng != null ? e.lng : null, d.entrega && e.km != null ? e.km : null, d.origem || (d.tipo === 'mesa' ? 'mesa' : 'site'), d.consumo || null, seq.seq_dia])).rows[0];
   let i = 0;
   for (const l of d.linhas) await c.query('INSERT INTO pedido_itens (pedido_id, restaurante_id, produto_id, nome, qtd, unit, opcoes, ordem, custo) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)', [p.id, rid, l.produto, l.nome, l.qtd, l.unit, l.opcoes, i++, l.custo == null ? null : l.custo]);

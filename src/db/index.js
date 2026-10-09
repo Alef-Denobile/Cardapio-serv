@@ -9,6 +9,8 @@ const config = require('../config');
 // numeric e bigint chegam como texto por padrão: convertemos para número
 types.setTypeParser(1700, v => v === null ? null : parseFloat(v));
 types.setTypeParser(20, v => v === null ? null : parseInt(v, 10));
+// date (sem hora) chega como texto 'AAAA-MM-DD', sem conversão de fuso
+types.setTypeParser(1082, v => v);
 
 function precisaSsl(url) {
   if (process.env.DATABASE_SSL === 'false') return false;

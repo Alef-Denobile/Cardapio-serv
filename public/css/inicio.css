@@ -24,3 +24,4 @@ body{ font:16px/1.45 Nunito, system-ui, sans-serif; color:#fff; background:var(-
 .ini-equipe{ display:inline-block; margin-top:22px; color:#fff; opacity:.75; font-size:13.5px; font-weight:700; }
 @media (max-width:560px){ .ini-opcoes{ grid-template-columns:1fr; } .ini-op{ padding:22px 16px; } .ini-op svg{ width:52px; height:52px; } }
 @media (prefers-reduced-motion:reduce){ .ini-op{ transition:none; } }
+.ini-legal{margin:10px 0 0;font-size:13px;text-align:center;opacity:.85}.ini-legal a{color:inherit}

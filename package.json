@@ -25,6 +25,7 @@
     "helmet": "^7.2.0",
     "jsonwebtoken": "^9.0.3",
     "leaflet": "^1.9.4",
+    "nodemailer": "^6.10.1",
     "pg": "^8.23.1",
     "socket.io": "^4.8.4"
   }

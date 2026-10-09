@@ -26,6 +26,7 @@ async function clienteDoToken(req, obrigatorio) {
   if (d.tipo !== 'cliente') { if (obrigatorio) throw new ErroApp(401, 'Entre com a sua conta de cliente.'); return null; }
   const c = await sistema(async x => (await x.query('SELECT * FROM clientes WHERE id = $1 AND ativo', [d.sub])).rows[0]);
   if (!c && obrigatorio) throw new ErroApp(401, 'Conta não encontrada. Entre de novo.');
+  if (c && c.senha_alterada_em && d.iat && d.iat * 1000 < new Date(c.senha_alterada_em).getTime() - 2000) { if (obrigatorio) throw new ErroApp(401, 'Sua senha foi trocada. Entre de novo.'); return null; }
   return c || null;
 }
 const exigirCliente = (req, res, next) => clienteDoToken(req, true).then(c => { req.cliente = c; next(); }).catch(next);
@@ -36,12 +37,13 @@ r.post('/cadastro', limite, rota(async (req, res) => {
   const nome = texto(b.nome, 60) || email.split('@')[0].replace(/[._-]+/g, ' ').replace(/\b\w/g, x => x.toUpperCase()).split(' ')[0];
   if (!/^\S+@\S+\.\S+$/.test(email)) throw new ErroApp(400, 'Informe um e-mail válido, como nome@email.com.');
   if (senha.length < 8) throw new ErroApp(400, 'A senha precisa ter pelo menos 8 caracteres.');
+  if (b.termos !== true) throw new ErroApp(400, 'Para criar a conta, aceite os Termos de uso e o Aviso de privacidade.');
   const telefone = conferirTel(b.telefone), cpf = conferirCpf(b.cpf);
   const hash = await bcrypt.hash(senha, 10);
   const c = await sistema(async x => {
     if ((await x.query('SELECT 1 FROM clientes WHERE email = $1', [email])).rowCount) throw new ErroApp(409, 'Já existe uma conta com esse e-mail. Use "Já tenho conta".');
     if ((await x.query('SELECT 1 FROM clientes WHERE cpf = $1', [cpf])).rowCount) throw new ErroApp(409, 'Já existe uma conta com esse CPF. Use "Já tenho conta".');
-    return (await x.query('INSERT INTO clientes (nome, email, senha_hash, telefone, cpf) VALUES ($1,$2,$3,$4,$5) RETURNING *', [nome, email, hash, telefone, cpf])).rows[0];
+    return (await x.query('INSERT INTO clientes (nome, email, senha_hash, telefone, cpf, termos_em) VALUES ($1,$2,$3,$4,$5, now()) RETURNING *', [nome, email, hash, telefone, cpf])).rows[0];
   });
   res.status(201).json({ token: assinar(c), cliente: publico(c) });
 }));
@@ -67,6 +69,28 @@ r.patch('/eu', exigirCliente, rota(async (req, res) => {
   try { c = await sistema(async x => (await x.query('UPDATE clientes SET nome = COALESCE(NULLIF($2, \'\'), nome), telefone = COALESCE($3, telefone), cpf = COALESCE(cpf, $4) WHERE id = $1 RETURNING *', [req.cliente.id, texto(b.nome, 60), tel, cpf])).rows[0]); }
   catch (e) { if (e.code === '23505') throw new ErroApp(409, 'Esse CPF já está em outra conta.'); throw e; }
   res.json({ cliente: publico(c) });
+}));
+
+/* LGPD: baixar os próprios dados e apagar a conta */
+r.get('/eu/dados', exigirCliente, rota(async (req, res) => {
+  const out = await sistema(async x => {
+    const c = req.cliente;
+    const pedidos = (await x.query('SELECT p.numero, p.criado_em, p.tipo, p.status, p.total, p.pag_metodo, p.cliente_nome, p.cliente_tel, p.entrega_endereco, p.entrega_bairro, r.nome AS restaurante FROM pedidos p JOIN restaurantes r ON r.id = p.restaurante_id WHERE p.cliente_id = $1 ORDER BY p.criado_em DESC', [c.id])).rows;
+    const avaliacoes = (await x.query('SELECT a.nota, a.comentario, a.criado_em, r.nome AS restaurante FROM avaliacoes a JOIN restaurantes r ON r.id = a.restaurante_id WHERE a.cliente_id = $1', [c.id])).rows;
+    const favoritos = (await x.query('SELECT r.nome FROM favoritos f JOIN restaurantes r ON r.id = f.restaurante_id WHERE f.cliente_id = $1', [c.id])).rows.map(y => y.nome);
+    return { geradoEm: new Date().toISOString(), conta: { nome: c.nome, email: c.email, telefone: c.telefone, cpf: c.cpf, criadaEm: c.criado_em, termosAceitosEm: c.termos_em }, pedidos, avaliacoes, favoritos };
+  });
+  res.set('Content-Disposition', 'attachment; filename="meus-dados.json"').json(out);
+}));
+r.delete('/eu', limite, exigirCliente, rota(async (req, res) => {
+  if (!await bcrypt.compare(String((req.body && req.body.senha) || ''), req.cliente.senha_hash)) throw new ErroApp(400, 'Senha incorreta.');
+  // os pedidos ficam (obrigação fiscal), mas sem ligação com a conta; avaliações e favoritos saem
+  await sistema(async x => {
+    await x.query('DELETE FROM avaliacoes WHERE cliente_id = $1', [req.cliente.id]);
+    await x.query("UPDATE senha_tokens SET usado_em = now() WHERE tipo = 'cliente' AND conta_id = $1 AND usado_em IS NULL", [req.cliente.id]);
+    await x.query('DELETE FROM clientes WHERE id = $1', [req.cliente.id]);
+  });
+  res.json({ ok: true });
 }));
 
 /* favoritos */

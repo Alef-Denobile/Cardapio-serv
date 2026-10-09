@@ -2,7 +2,7 @@ const jwt = require('jsonwebtoken');
 const config = require('../config');
 const { sistema } = require('../db');
 const { ErroApp } = require('../lib/util');
-const { recursosDe } = require('../lib/recursos');
+const { recursosDe, recursosDaLinha } = require('../lib/recursos');
 
 function assinar(u) {
   return jwt.sign({ sub: String(u.id), rid: String(u.restaurante_id), papel: u.papel }, config.jwtSecret, { expiresIn: config.jwtValidade });
@@ -15,11 +15,12 @@ async function identificar(token) {
   try { d = verificar(token); } catch (e) { throw new ErroApp(401, 'Sua sessão expirou. Entre de novo.'); }
   if (d.tipo === 'admin' || d.tipo === 'cliente') throw new ErroApp(401, 'Entre com uma conta do restaurante.');
   return sistema(async c => {
-    const u = (await c.query('SELECT u.*, r.ativo AS rest_ativo, r.rec_mesa, r.rec_chamados, r.rec_retirada, r.rec_delivery, r.rec_pix, r.rec_cartao, r.rec_dinheiro, r.rec_vitrine, r.rec_online, r.rec_whatsapp, r.rec_totem, r.rec_nfce, r.nome AS rest_nome FROM usuarios u JOIN restaurantes r ON r.id = u.restaurante_id WHERE u.id = $1', [d.sub])).rows[0];
+    const u = (await c.query('SELECT u.*, row_to_json(r) AS rest_row FROM usuarios u JOIN restaurantes r ON r.id = u.restaurante_id WHERE u.id = $1', [d.sub])).rows[0];
     if (!u || !u.ativo) throw new ErroApp(401, 'Acesso desativado. Fale com o dono do restaurante.');
-    if (!u.rest_ativo) throw new ErroApp(403, 'O acesso deste restaurante está suspenso. Fale com o suporte.');
+    if (u.senha_alterada_em && d.iat && d.iat * 1000 < new Date(u.senha_alterada_em).getTime() - 2000) throw new ErroApp(401, 'Sua senha foi trocada. Entre de novo.');
+    if (!u.rest_row.ativo) throw new ErroApp(403, u.rest_row.suspenso_cobranca ? 'O acesso deste restaurante está suspenso por mensalidade em atraso. Pague a fatura pelo link enviado ou fale com o suporte.' : 'O acesso deste restaurante está suspenso. Fale com o suporte.');
     const usuario = { id: u.id, _id: u.id, nome: u.nome, email: u.email, papel: u.papel, ativo: u.ativo, restaurante: u.restaurante_id };
-    const rest = { nome: u.rest_nome, ativo: u.rest_ativo, recursos: { mesa: u.rec_mesa, chamados: u.rec_chamados, retirada: u.rec_retirada, delivery: u.rec_delivery, pix: u.rec_pix, cartao: u.rec_cartao, dinheiro: u.rec_dinheiro, vitrine: u.rec_vitrine, online: u.rec_online, whatsapp: u.rec_whatsapp, totem: u.rec_totem, nfce: u.rec_nfce } };
+    const rest = { nome: u.rest_row.nome, ativo: u.rest_row.ativo, recursos: recursosDaLinha(u.rest_row) };
     rest.recursos = recursosDe(rest);
     return { usuario, rest };
   });

@@ -25,3 +25,13 @@ services:
         sync: false
       - key: JWT_SECRET
         generateValue: true
+      # E-mail do "Esqueci minha senha" e das faturas (resend recomendado). Veja o README.
+      - key: EMAIL_PROVEDOR
+        sync: false
+      - key: RESEND_API_KEY
+        sync: false
+      - key: EMAIL_REMETENTE
+        sync: false
+      # Site de apresentação: "on" mostra o Pix de demonstração. Para clientes reais, deixe vazio.
+      - key: PIX_DEMO
+        sync: false

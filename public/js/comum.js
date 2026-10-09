@@ -30,7 +30,7 @@
       r = await fetch(url, { method: metodo, headers: Object.assign({ 'Content-Type': 'application/json' }, token ? { Authorization: 'Bearer ' + token } : {}), body: corpo ? JSON.stringify(corpo) : undefined });
     } catch (e) { throw Object.assign(new Error('Sem conexão com o servidor. Confira a internet e tente de novo.'), { status: 0 }); }
     const d = await r.json().catch(() => ({}));
-    if (!r.ok) throw Object.assign(new Error(d.erro || 'Algo deu errado. Tente de novo.'), { status: r.status });
+    if (!r.ok) throw Object.assign(new Error(d.erro || 'Algo deu errado. Tente de novo.'), { status: r.status, dados: d });
     return d;
   }
   const guardar = {
@@ -54,7 +54,25 @@
       } catch (e) {}
     });
   }
-  w.C = { ajudaSenha, $, $$, esc, brl, norm, pad, hora, ago, initials, toast, lum, aplicarCor, foto, api, guardar, copiar, STATUS, pagTxt, trocoTxt };
+  // Esqueci minha senha: manda o link para o e-mail digitado no campo de login
+  function esqueciSenha(tipo){
+    const b = $('#l-esqueci'), box = $('#l-ajuda'); if (!b || !box) return;
+    b.addEventListener('click', () => {
+      const abrir = box.hidden; box.hidden = !abrir; b.setAttribute('aria-expanded', String(abrir)); if (!abrir) return;
+      box.innerHTML = '<p style="margin:0 0 8px">Digite o seu e-mail no campo acima e toque em <strong>Enviar link</strong>. Você recebe um link para criar uma senha nova.</p><button class="btn sm" type="button" id="l-enviar-link">Enviar link</button><p id="l-link-msg" style="margin:8px 0 0" hidden></p>';
+      $('#l-enviar-link').addEventListener('click', async () => {
+        const em = ($('#l-email').value || '').trim(), m = $('#l-link-msg'), bt = $('#l-enviar-link');
+        m.hidden = false;
+        if (!/^\S+@\S+\.\S+$/.test(em)){ m.textContent = 'Digite o seu e-mail no campo E-mail.'; $('#l-email').focus(); return; }
+        bt.disabled = true; bt.textContent = 'Enviando…';
+        try { const d = await api('POST', '/api/senha/esqueci', { email: em, tipo }); m.textContent = d.mensagem; }
+        catch (e) { m.textContent = e.message; }
+        bt.disabled = false; bt.textContent = 'Enviar de novo';
+      });
+      setTimeout(() => { if (!$('#l-email').value) $('#l-email').focus(); }, 30);
+    });
+  }
+  w.C = { esqueciSenha, ajudaSenha, $, $$, esc, brl, norm, pad, hora, ago, initials, toast, lum, aplicarCor, foto, api, guardar, copiar, STATUS, pagTxt, trocoTxt };
 })(window);
 
 // Foto que não carregar some e deixa o fundo do placeholder

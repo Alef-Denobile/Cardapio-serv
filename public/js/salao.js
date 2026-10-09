@@ -19,7 +19,9 @@ async function api(m, url, corpo){
   const d = await r.json().catch(() => ({})); if (!r.ok) throw Object.assign(new Error(d.erro || 'Algo deu errado. Tente de novo.'), { status: r.status }); return d;
 }
 
-const rota = /^\/r\/([a-z0-9-]+)\/(?:mesa\/(\d+)|salao)\/?$/.exec(location.pathname) || [];
+// no domínio próprio do restaurante o endereço é /salao ou /mesa/5, e o servidor diz qual é o restaurante
+const META_R = (document.querySelector('meta[name="restaurante"]') || {}).content || '';
+const rota = /^\/r\/([a-z0-9-]+)\/(?:mesa\/(\d+)|salao)\/?$/.exec(location.pathname) || (META_R ? [null, META_R].concat((/^\/mesa\/(\d+)\/?$/.exec(location.pathname) || [null, undefined]).slice(1)) : []);
 const SLUG = rota[1] || '', MESA = rota[2] ? Math.trunc(+rota[2]) : 0, TOKEN = new URLSearchParams(location.search).get('t') || '';
 const CHAVE = 'salao:' + SLUG + ':' + MESA;
 let R = null, P = [];
@@ -28,8 +30,8 @@ const S = { cat: null, q: '', cart: ler(CHAVE + ':cart', []), mesaOk: false, ite
 const salvar = () => { gravar(CHAVE + ':cart', S.cart); gravar(CHAVE + ':pedidos', S.meus.slice(0, 15)); gravar('salao:nome', S.nome); };
 
 const prod = id => P.find(p => p.id === id);
-const unit = (p, sel) => p.preco + (p.opcoes || []).reduce((a, o, oi) => a + ((sel[oi] || []).reduce((b, x) => b + ((o.escolhas[x] || {}).preco || 0), 0)), 0);
-const nomesSel = (p, sel) => (p.opcoes || []).flatMap((o, oi) => (sel[oi] || []).map(x => (o.escolhas[x] || {}).nome)).filter(Boolean);
+const unit = (p, sel) => Opcoes.unit(p, sel || {});
+const nomesSel = (p, sel) => Opcoes.nomes(p, sel || {});
 const linhas = () => S.cart.map(l => ({ l, p: prod(l.id) })).filter(x => x.p && !x.p.esgotado);
 const subtotal = () => linhas().reduce((a, x) => a + unit(x.p, x.l.sel) * x.l.q, 0);
 const qtd = id => S.cart.filter(l => id == null || l.id === id).reduce((a, l) => a + l.q, 0);
@@ -40,7 +42,7 @@ const podeAdd = () => S.mesaOk || balcao();
 const podePedir = () => podeAdd() && (R.aberto || R.aceitarForaDoHorario);
 const foto = (p, cls) => p.fotoUrl ? '<img class="' + cls + '" src="' + esc(p.fotoUrl) + '" alt="" loading="lazy">' : '<span class="' + cls + ' ph" aria-hidden="true">' + esc(p.nome[0]) + '</span>';
 const pagsBalcao = () => ((R.pagamentos && R.pagamentos.retirada) || ['local']).filter(m => m === 'local' || m === 'pix');
-const STATUS_B = { novo: 'Recebido pela cozinha', preparo: 'Em preparo', pronto: 'Pronto! Retire no balcão', entregue: 'Retirado', cancelado: 'Cancelado' };
+const STATUS_B = { aguardando: 'Esperando o Pix', novo: 'Recebido pela cozinha', preparo: 'Em preparo', pronto: 'Pronto! Retire no balcão', entregue: 'Retirado', cancelado: 'Cancelado' };
 const stTxt = p => (p.tipo === 'retirada' ? STATUS_B[p.status] : STATUS[p.status]) || p.status;
 const STATUS = { aguardando: 'Aguardando', novo: 'Recebido pela cozinha', preparo: 'Em preparo', pronto: 'Pronto, já vai para a mesa', rota: 'A caminho', entregue: 'Servido', cancelado: 'Cancelado' };
 const ICO = {
@@ -73,12 +75,12 @@ function renderCats(){
     return '<button data-cat="' + i + '" aria-current="' + (S.cat === i || (S.cat == null && i === 0)) + '">' + foto(p, 'sl-ci') + '<span>' + esc(c) + '</span></button>'; }).join('');
 }
 function itemHtml(p){
-  const n = qtd(p.id), extra = (p.opcoes || []).some(o => o.escolhas.some(e => e.preco));
+  const n = qtd(p.id), extra = Opcoes.variavel(p);
   return '<article class="sl-item' + (p.esgotado ? ' off' : '') + '"><button class="sl-ver" data-ver="' + p.id + '"' + (p.esgotado ? ' disabled' : '') + '>' + foto(p, 'sl-foto') +
     '<span class="sl-txt"><strong>' + esc(p.nome) + '</strong><small>' + esc(p.descricao) + '</small>' +
     ((p.selos || []).length ? '<span class="sl-selos">' + p.selos.map(s => '<i>' + esc(s) + '</i>').join('') + '</span>' : '') + '</span></button>' +
-    '<div class="sl-lado"><b>' + (extra ? '<em>a partir de</em>' : '') + brl(p.preco) + '</b>' +
-    (p.esgotado ? '<span class="sl-esg">Esgotado</span>' : podeAdd() ? '<button class="sl-mais" data-add="' + p.id + '" aria-label="Adicionar ' + esc(p.nome) + '"><span aria-hidden="true">+</span> Adicionar' + (n ? '<span class="sl-n">' + n + '</span>' : '') + '</button>' : '') + '</div></article>';
+    '<div class="sl-lado"><b>' + (extra ? '<em>a partir de</em>' : '') + brl(Opcoes.aPartir(p)) + '</b>' +
+    (p.esgotado ? '<span class="sl-esg">' + (p.foraHorario ? 'Só ' + esc(p.foraHorario) : 'Esgotado') + '</span>' : podeAdd() ? '<button class="sl-mais" data-add="' + p.id + '" aria-label="Adicionar ' + esc(p.nome) + '"><span aria-hidden="true">+</span> Adicionar' + (n ? '<span class="sl-n">' + n + '</span>' : '') + '</button>' : '') + '</div></article>';
 }
 // Mostra só a categoria escolhida na barra lateral; com busca, mostra os resultados de todas
 function renderProds(){
@@ -118,9 +120,11 @@ function renderCarr(){
       '<label class="sl-l" for="sl-obs">Observações</label><input id="sl-obs" maxlength="300" placeholder="Ex.: sem cebola" value="' + esc(S.obs) + '">' +
       '<div class="sl-tot"><div><span>Subtotal</span><span>' + brl(sub) + '</span></div>' + (servB ? '<div><span>Serviço (' + R.taxaServico + '%)</span><span>' + brl(servB) + '</span></div>' : '') + '<div class="t"><span>Total</span><span>' + brl(sub + servB) + '</span></div></div>' +
       '<button class="sl-enviar" data-act="enviar"' + (podePedir() && !S.enviando ? '' : ' disabled') + '>' + (S.enviando ? 'Enviando…' : 'Finalizar pedido') + '</button>' +
+      '<p class="sl-legal">Ao pedir, você concorda com os <a href="/termos?r=' + encodeURIComponent(SLUG) + '" target="_blank" rel="noopener">Termos de uso</a> e o <a href="/privacidade?r=' + encodeURIComponent(SLUG) + '" target="_blank" rel="noopener">Aviso de privacidade</a>.</p>' +
       '<p class="sl-dica">' + (B ? (S.pag === 'pix' && R.chavePix ? 'Pague com Pix na chave ' + esc(R.chavePix) + ' e mostre no balcão. ' : 'Pague no caixa ao retirar. ') + 'Retire no balcão quando chamarmos seu número.' : 'Você paga no final, quando pedir a conta.') + '</p>';
   }
-  if (meus.length) h += '<div class="sl-meus"><p>' + (MESA ? 'Pedidos desta mesa' : 'Seus pedidos') + '</p>' + meus.map(p => '<div class="sl-meu ' + p.status + '"><strong>#' + N(p.numero) + '</strong><span>' + esc(stTxt(p)) + '</span><small>' + p.linhas.map(l => l.qtd + '× ' + esc(l.nome)).join(', ') + '</small></div>').join('') +
+  if (meus.length) h += '<div class="sl-meus"><p>' + (MESA ? 'Pedidos desta mesa' : 'Seus pedidos') + '</p>' + meus.map(p => '<div class="sl-meu ' + p.status + '"><strong>#' + N(p.numero) + '</strong><span>' + esc(stTxt(p)) + '</span><small>' + p.linhas.map(l => l.qtd + '× ' + esc(l.nome)).join(', ') + '</small>' +
+      (p.status === 'aguardando' && p.pagamento && p.pagamento.pix && window.Pix ? '<div class="sl-pix">' + Pix.bloco(p, (S.meus.find(m => m.id === p.id) || {}).c) + '</div>' : '') + '</div>').join('') +
     (S.mesaOk && R.recursos.chamados !== false ? '<button class="sl-sec-bt" data-act="conta">' + ICO.conta + 'Ver e pedir a conta</button>' : '') + '</div>';
   $('#carr').innerHTML = h;
   // barra de baixo (celular)
@@ -139,15 +143,15 @@ function atualizarItens(){ renderProds(); renderCarr(); }
 /* ---------- prato com opções ---------- */
 function abrirItem(id){
   const p = prod(id); if (!p || p.esgotado) return;
-  S.item = { id, q: 1, sel: {} }; (p.opcoes || []).forEach((o, oi) => { S.item.sel[oi] = o.tipo === 'um' ? [0] : []; });
+  S.item = { id, q: 1, sel: Opcoes.inicial(p) };
   desenharItem();
 }
 function desenharItem(){
   const p = prod(S.item.id), it = S.item;
   $('#modal').innerHTML = '<div class="sl-veu" data-act="fechar-modal"><div class="sl-caixa" role="dialog" aria-modal="true" aria-labelledby="it-n">' + (p.fotoUrl ? '<img class="sl-ifoto" src="' + esc(p.fotoUrl) + '" alt="">' : '') +
     '<div class="sl-ib"><h2 id="it-n">' + esc(p.nome) + '</h2><p>' + esc(p.descricao) + '</p>' +
-    (p.opcoes || []).map((o, oi) => '<fieldset><legend>' + esc(o.nome) + ' <small>' + (o.tipo === 'um' ? 'escolha 1' : 'opcional') + '</small></legend>' + o.escolhas.map((e, ei) =>
-      '<button type="button" class="sl-op" data-op="' + oi + ':' + ei + '" aria-pressed="' + it.sel[oi].includes(ei) + '"><span>' + esc(e.nome) + '</span>' + (e.preco ? '<b>+ ' + brl(e.preco) + '</b>' : '') + '</button>').join('') + '</fieldset>').join('') +
+    (p.opcoes || []).map((o, oi) => '<fieldset><legend>' + esc(o.nome) + ' <small>' + Opcoes.rotulo(o) + '</small></legend>' + o.escolhas.map((e, ei) =>
+      '<button type="button" class="sl-op" data-op="' + oi + ':' + ei + '" aria-pressed="' + it.sel[oi].includes(ei) + '"' + (e.esgotado ? ' disabled' : '') + '><span>' + esc(e.nome) + (e.esgotado ? ' <small>(esgotado)</small>' : '') + '</span>' + (o.tipo === 'sabores' ? '<b>' + brl(e.preco) + '</b>' : o.tipo !== 'combo' && e.preco ? '<b>+ ' + brl(e.preco) + '</b>' : '') + '</button>').join('') + '</fieldset>').join('') +
     (podeAdd() ? '<div class="sl-if"><div class="sl-step g"><button data-iq="-1" aria-label="Menos">−</button><span>' + it.q + '</span><button data-iq="1" aria-label="Mais">+</button></div><button class="sl-enviar" data-act="por-item">Adicionar · ' + brl(unit(p, it.sel) * it.q) + '</button></div>' : '<p class="sl-dica">Para pedir, use o QR Code da sua mesa.</p>') +
     '</div><button class="sl-x sl-x-m" data-act="fechar-modal" aria-label="Fechar">×</button></div></div>';
 }
@@ -174,9 +178,11 @@ async function enviar(){
     const d = await api('POST', '/api/r/' + encodeURIComponent(SLUG) + '/pedidos', Object.assign(corpo, { itens: ls.map(x => ({ produto: x.p.id, qtd: x.l.q, escolhas: x.l.sel })), obs: S.obs }));
     S.meus.unshift({ id: d.pedido.id, c: d.codigo, em: Date.now() }); S.pedidos.unshift(d.pedido);
     S.cart = []; S.obs = ''; S.enviando = false; salvar(); conectar(); atualizarItens();
-    toast('Pedido #' + N(d.pedido.numero) + (B ? ' enviado! Avisamos aqui quando ficar pronto.' : ' enviado para a cozinha!'));
+    toast(d.pedido.pagamento && d.pedido.pagamento.pix ? 'Pedido #' + N(d.pedido.numero) + ': pague o Pix abaixo para enviar à cozinha.' : 'Pedido #' + N(d.pedido.numero) + (B ? ' enviado! Avisamos aqui quando ficar pronto.' : ' enviado para a cozinha!'));
+    if (d.pedido.pagamento && d.pedido.pagamento.pix) setTimeout(() => { const x = document.querySelector('.sl-pix'); if (x) x.scrollIntoView({ behavior: 'smooth', block: 'center' }); }, 80);
   } catch (e) { S.enviando = false; renderCarr(); toast(e.message); if (e.status === 409) recarregar(); }
 }
+if (window.Pix) Pix.ligar(() => { toast('Pix confirmado! Seu pedido foi para a cozinha.'); carregarPedidos(); });
 async function carregarPedidos(){
   if (!S.meus.length) return;
   try { S.pedidos = (await api('POST', '/api/acompanhar', { pedidos: S.meus.slice(0, 15).map(x => ({ id: x.id, c: x.c })) })).pedidos; renderCarr(); } catch (e) {}
@@ -237,14 +243,14 @@ document.addEventListener('click', e => {
   if (d.add){ adicionar(d.add); return; }
   if (d.linha){ const l = S.cart.find(x => x.k === d.linha); if (!l) return; l.q += +d.d; if (l.q <= 0) S.cart = S.cart.filter(x => x !== l); salvar(); atualizarItens(); return; }
   if (d.op){ const [oi, ei] = d.op.split(':').map(Number), o = prod(S.item.id).opcoes[oi];
-    if (o.tipo === 'um') S.item.sel[oi] = [ei]; else { const st = new Set(S.item.sel[oi]); st.has(ei) ? st.delete(ei) : st.add(ei); S.item.sel[oi] = [...st].sort((a, b) => a - b); }
+    Opcoes.alternar(prod(S.item.id), S.item.sel, oi, ei); if (o.tipo === 'varios') S.item.sel[oi].sort((a, b) => a - b);
     desenharItem(); return; }
   if (d.iq){ S.item.q = Math.max(1, Math.min(30, S.item.q + +d.iq)); desenharItem(); return; }
   if (d.bpag){ S.pag = d.bpag; renderCarr(); return; }
   if (d.cpag){ S.contaF.pag = d.cpag; desenharConta(); return; }
   if (d.cpes){ S.contaF.pessoas = Math.max(1, Math.min(30, S.contaF.pessoas + +d.cpes)); desenharConta(); return; }
   switch (d.act){
-    case 'por-item': { const it = S.item; fecharModal(); colocar(it.id, it.sel, it.q); break; }
+    case 'por-item': { const it = S.item, er = Opcoes.validar(prod(it.id), it.sel); if (er){ toast(er); break; } fecharModal(); colocar(it.id, it.sel, it.q); break; }
     case 'enviar': enviar(); break;
     case 'garcom': chamarGarcom(el); break;
     case 'conta': abrirConta(); break;

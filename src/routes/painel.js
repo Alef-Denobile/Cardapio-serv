@@ -5,7 +5,7 @@ const bcrypt = require('bcryptjs');
 const { doRestaurante } = require('../db');
 const repo = require('../lib/repo');
 const { exigir } = require('../middleware/auth');
-const { ErroApp, rota, texto, numero, centavos, tokenAleatorio, inicioDoDia, uuidValido, pedidoParaCliente } = require('../lib/util');
+const { ErroApp, rota, texto, numero, centavos, tokenAleatorio, urlBase, inicioDoDia, uuidValido, pedidoParaCliente } = require('../lib/util');
 const { limparProduto, limparConfig } = require('../lib/dados');
 const { recursosDe } = require('../lib/recursos');
 const rt = require('../realtime');
@@ -13,6 +13,7 @@ const whatsapp = require('../lib/whatsapp');
 const estoque = require('../lib/estoque');
 const notas = require('../lib/notas');
 const fiscal = require('../lib/fiscal');
+const pix = require('../lib/pix');
 const config = require('../config');
 
 const r = express.Router();
@@ -173,12 +174,14 @@ r.get('/produtos', equipe, rota(async (req, res) => {
 }));
 r.post('/produtos', dono, rota(async (req, res) => {
   const dados = limparProduto(req.body || {});
+  if (dados.opcoes.some(o => o.tipo === 'combo' || o.tipo === 'sabores') && !recursosDe(req.rest).combos) throw new ErroApp(403, 'Combos e meio a meio não estão incluídos no plano. Fale com o suporte.');
   const p = await noRest(req, async c => { const p = await repo.criarProduto(c, req.rid, dados); await repo.adicionarCategoria(c, req.rid, dados.categoria); return p; });
   res.status(201).json({ produto: p });
 }));
 r.put('/produtos/:id', dono, rota(async (req, res) => {
   if (!uuidValido(req.params.id)) throw new ErroApp(404, 'Produto não encontrado.');
   const dados = limparProduto(req.body || {});
+  if (dados.opcoes.some(o => o.tipo === 'combo' || o.tipo === 'sabores') && !recursosDe(req.rest).combos) throw new ErroApp(403, 'Combos e meio a meio não estão incluídos no plano. Fale com o suporte.');
   const p = await noRest(req, async c => { const p = await repo.atualizarProduto(c, req.rid, req.params.id, dados); if (p) await repo.adicionarCategoria(c, req.rid, dados.categoria); return p; });
   if (!p) throw new ErroApp(404, 'Produto não encontrado.');
   res.json({ produto: p });
@@ -207,12 +210,64 @@ r.delete('/produtos/:id', dono, rota(async (req, res) => {
 /* ---------- Configurações do restaurante ---------- */
 const paraDono = rest => { const o = Object.assign({}, rest); delete o.observacoes; delete o.totemToken; return o; };
 r.get('/restaurante', dono, rota(async (req, res) => {
-  res.json({ restaurante: paraDono(await noRest(req, c => repo.carregarRest(c, req.rid))), fiscalProvedor: config.fiscalProvedor, buscaEndereco: config.buscaEndereco });
+  res.json({ restaurante: paraDono(await noRest(req, c => repo.carregarRest(c, req.rid))), fiscalProvedor: config.fiscalProvedor, buscaEndereco: config.buscaEndereco, pixDemo: config.pixDemo, urlBase: urlBase(req) });
 }));
 r.put('/restaurante', dono, rota(async (req, res) => {
   const mud = limparConfig(req.body);
   const rest = await noRest(req, async c => { await repo.salvarConfig(c, req.rid, mud); return repo.carregarRest(c, req.rid); });
   res.json({ restaurante: paraDono(rest) });
+}));
+
+/* ---------- Mensalidade da plataforma (o dono vê e paga) ---------- */
+r.get('/faturas', dono, rota(async (req, res) => {
+  const cobranca = require('../lib/cobranca');
+  const out = await noRest(req, async c => {
+    const rest = await repo.carregarRest(c, req.rid);
+    const fs = (await c.query(cobranca.SELECT_F + ' WHERE f.restaurante_id = $1 ORDER BY f.competencia DESC LIMIT 12', [req.rid])).rows.map(cobranca.faturaObj);
+    return { cobranca: { ativa: !!rest.cobranca.ativa, valor: rest.cobranca.valor, dia: rest.cobranca.dia, tolerancia: rest.cobranca.tolerancia }, faturas: fs.map(f => Object.assign(f, { link: '/fatura/' + f.id + '?c=' + encodeURIComponent(f.codigo), codigo: undefined })) };
+  });
+  res.json(out);
+}));
+
+/* ---------- Lembrete de carrinho no WhatsApp (função extra) ---------- */
+r.get('/carrinho', dono, comRecurso('carrinho'), rota(async (req, res) => {
+  res.json(await noRest(req, async c => {
+    const m = (await c.query('SELECT carrinho_min FROM restaurantes WHERE id = $1', [req.rid])).rows[0].carrinho_min;
+    const st = (await c.query(`SELECT count(*) FILTER (WHERE lembrado_em IS NOT NULL)::int AS enviados, count(*) FILTER (WHERE lembrado_em IS NOT NULL AND finalizado_em > lembrado_em)::int AS recuperados,
+      count(*) FILTER (WHERE lembrado_em IS NULL AND finalizado_em IS NULL)::int AS abertos FROM carrinhos WHERE restaurante_id = $1`, [req.rid])).rows[0];
+    return { minutos: m, enviados: st.enviados, recuperados: st.recuperados, abertos: st.abertos, whatsapp: !!config.whatsapp.provedor };
+  }));
+}));
+r.put('/carrinho', dono, comRecurso('carrinho'), rota(async (req, res) => {
+  const m = Math.trunc(numero(req.body && req.body.minutos, 30));
+  if (m < 10 || m > 720) throw new ErroApp(400, 'Escolha entre 10 minutos e 12 horas.');
+  await noRest(req, c => c.query('UPDATE restaurantes SET carrinho_min = $2 WHERE id = $1', [req.rid, m]));
+  res.json({ minutos: m });
+}));
+
+/* ---------- Pix automático (conta do Mercado Pago do restaurante) ---------- */
+// O token e o segredo nunca voltam para a tela: só se sabe se estão cadastrados.
+r.put('/pix', dono, comRecurso('pixauto'), rota(async (req, res) => {
+  const b = req.body || {}, provedor = b.provedor === 'demo' ? 'demo' : 'mercadopago';
+  if (provedor === 'demo' && !config.pixDemo) throw new ErroApp(400, 'O modo de demonstração está desligado neste servidor.');
+  const token = typeof b.token === 'string' ? b.token.trim() : null, segredo = typeof b.segredo === 'string' ? b.segredo.trim() : null;
+  if (token && !/^(APP_USR|TEST)-[\w-]{20,}$/.test(token)) throw new ErroApp(400, 'Esse não parece um Access Token do Mercado Pago. Ele começa com APP_USR-.');
+  if (token) { try { await pix.testar(token); } catch (e) { throw new ErroApp(400, e.message); } }
+  const rest = await noRest(req, async c => {
+    const atual = (await c.query('SELECT pix_token, pix_chave_webhook FROM restaurantes WHERE id = $1', [req.rid])).rows[0];
+    const temToken = token ? true : token === '' ? false : !!atual.pix_token;
+    if (b.ativo && provedor === 'mercadopago' && !temToken) throw new ErroApp(400, 'Cole o Access Token do Mercado Pago para ligar o Pix automático.');
+    await c.query(`UPDATE restaurantes SET pix_auto = $2, pix_token = CASE WHEN $3::text IS NULL THEN pix_token WHEN $3 = '' THEN NULL ELSE $3 END,
+      pix_segredo = CASE WHEN $4::text IS NULL THEN pix_segredo WHEN $4 = '' THEN NULL ELSE $4 END, pix_chave_webhook = coalesce(pix_chave_webhook, $5) WHERE id = $1`,
+      [req.rid, { ativo: !!b.ativo, provedor }, token, segredo, tokenAleatorio(24)]);
+    return repo.carregarRest(c, req.rid);
+  });
+  res.json({ restaurante: paraDono(rest) });
+}));
+r.post('/pix/testar', dono, comRecurso('pixauto'), rota(async (req, res) => {
+  const token = await require('./pix').tokenDo(req.rid);
+  if (!token) throw new ErroApp(400, 'Nenhum token cadastrado ainda.');
+  try { res.json(await pix.testar(token)); } catch (e) { throw new ErroApp(400, e.message); }
 }));
 
 /* ---------- Mesas, QR Codes e totem ----------
@@ -277,7 +332,7 @@ r.post('/equipe/:id/senha', dono, rota(async (req, res) => {
   const senha = String((req.body && req.body.senha) || '');
   if (senha.length < 8) throw new ErroApp(400, 'A nova senha precisa ter pelo menos 8 caracteres.');
   const hash = await bcrypt.hash(senha, 10);
-  const n = await noRest(req, async c => (await c.query('UPDATE usuarios SET senha_hash = $3 WHERE id = $1 AND restaurante_id = $2', [req.params.id, req.rid, hash])).rowCount);
+  const n = await noRest(req, async c => (await c.query('UPDATE usuarios SET senha_hash = $3, senha_alterada_em = now() WHERE id = $1 AND restaurante_id = $2', [req.params.id, req.rid, hash])).rowCount);
   if (!n) throw new ErroApp(404, 'Pessoa não encontrada.');
   res.json({ ok: true });
 }));

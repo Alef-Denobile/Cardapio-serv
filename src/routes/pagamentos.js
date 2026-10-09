@@ -51,8 +51,20 @@ r.post('/demo/:id', limite, rota(async (req, res) => {
 // Pedido pago pelo site que não foi pago em 30 minutos é cancelado (não chegou a ir para a cozinha)
 async function cancelarVencidos() {
   try {
+    // Pix automático: última conferência no Mercado Pago antes de cancelar (o Pix pode ter sido pago no último minuto)
+    const pixVencidos = await sistema(async c => (await c.query(`SELECT p.*, r.pix_token FROM pedidos p JOIN restaurantes r ON r.id = p.restaurante_id
+      WHERE p.status = 'aguardando' AND p.pag_metodo = 'pix' AND p.criado_em < now() - interval '32 minutes'`)).rows);
+    const conferidos = [];
+    for (const row of pixVencidos) { try { await require('./pix').conferir(row, row.pix_token); conferidos.push(row.id); } catch (e) { conferidos.push(row.id); } }
+    // Pix pago depois do prazo (pedido já cancelado), mesmo sem o aviso do Mercado Pago: confere os das últimas 3 horas
+    const tardios = await sistema(async c => (await c.query(`SELECT p.*, r.pix_token FROM pedidos p JOIN restaurantes r ON r.id = p.restaurante_id
+      WHERE p.status = 'cancelado' AND p.pag_metodo = 'pix' AND NOT p.pag_pago AND p.pag_ref IS NOT NULL AND p.pag_ref NOT LIKE 'demo-%' AND r.pix_token IS NOT NULL
+        AND p.criado_em > now() - interval '3 hours' ORDER BY p.criado_em DESC LIMIT 30`)).rows);
+    for (const row of tardios) { try { await require('./pix').conferir(row, row.pix_token); } catch (e) {} }
     const n = await sistema(async c => {
-      const rows = (await c.query("UPDATE pedidos SET status = 'cancelado' WHERE status = 'aguardando' AND criado_em < now() - interval '30 minutes' RETURNING id, restaurante_id")).rows;
+      // Pix: só cancela os que acabaram de passar pela última conferência (nenhum escapa entre as duas consultas)
+      const rows = (await c.query(`UPDATE pedidos SET status = 'cancelado' WHERE status = 'aguardando'
+        AND ((pag_metodo <> 'pix' AND criado_em < now() - interval '30 minutes') OR id = ANY($1::uuid[])) RETURNING id, restaurante_id`, [conferidos])).rows;
       for (const x of rows) {
         await c.query('INSERT INTO pedido_historico (pedido_id, restaurante_id, status, por) VALUES ($1,$2,$3,$4)', [x.id, x.restaurante_id, 'cancelado', 'pagamento não concluído']);
         await estoque.devolver(c, x.restaurante_id, x.id, 'pagamento não concluído'); // devolve o que a venda tinha reservado
@@ -62,6 +74,6 @@ async function cancelarVencidos() {
     if (n) console.log(`Cancelados ${n} pedido(s) sem pagamento.`);
   } catch (e) { console.error('Erro ao cancelar pedidos sem pagamento:', e.message); }
 }
-function iniciarLimpeza() { cancelarVencidos(); return setInterval(cancelarVencidos, 5 * 60 * 1000).unref(); }
+function iniciarLimpeza() { cancelarVencidos(); return setInterval(cancelarVencidos, 2 * 60 * 1000).unref(); }
 
-module.exports = { router: r, aprovar, recusar, iniciarLimpeza };
+module.exports = { router: r, aprovar, recusar, iniciarLimpeza, cancelarVencidos };

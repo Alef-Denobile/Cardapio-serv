@@ -19,10 +19,10 @@ function numeroWhats(tel) {
   return n;
 }
 
-async function enviarMeta(para, params) {
+async function enviarMeta(para, params, modelo) {
   const url = `https://graph.facebook.com/${config.whatsapp.versao}/${config.whatsapp.phoneId}/messages`;
   const corpo = { messaging_product: 'whatsapp', to: para, type: 'template',
-    template: { name: config.whatsapp.modelo, language: { code: config.whatsapp.idioma }, components: [{ type: 'body', parameters: params.map(t => ({ type: 'text', text: String(t).slice(0, 200) })) }] } };
+    template: { name: modelo || config.whatsapp.modelo, language: { code: config.whatsapp.idioma }, components: [{ type: 'body', parameters: params.map(t => ({ type: 'text', text: String(t).slice(0, 200) })) }] } };
   const r = await fetch(url, { method: 'POST', headers: { Authorization: 'Bearer ' + config.whatsapp.token, 'Content-Type': 'application/json' }, body: JSON.stringify(corpo), signal: AbortSignal.timeout(8000) });
   if (!r.ok) throw new Error('WhatsApp respondeu ' + r.status + ': ' + (await r.text()).slice(0, 300));
 }
@@ -42,4 +42,17 @@ async function avisar(rest, p) {
   } catch (e) { console.error('Aviso por WhatsApp não enviado:', e.message); return false; }
 }
 
-module.exports = { avisar, textoStatus, numeroWhats };
+// Lembrete de carrinho não finalizado (modelo separado, aprovado na Meta: "Olá, {{1}}! Você deixou um pedido no {{2}}. Para terminar: {{3}}")
+async function lembrarCarrinho(rest, k, link) {
+  try {
+    const prov = config.whatsapp.provedor, para = numeroWhats(k.tel);
+    if (!prov || !para) return false;
+    const nome = String(k.nome || 'tudo bem').split(' ')[0];
+    const params = [nome, rest.nome, link];
+    if (prov === 'log') console.log(`[WhatsApp] para ${para.slice(0, 4)}…${para.slice(-2)}: Olá, ${params[0]}! Você deixou um pedido no ${params[1]}. Para terminar: ${params[2]}`);
+    else if (prov === 'meta') await enviarMeta(para, params, config.whatsapp.modeloCarrinho);
+    return true;
+  } catch (e) { console.error('Lembrete de carrinho não enviado:', e.message); return false; }
+}
+
+module.exports = { avisar, lembrarCarrinho, textoStatus, numeroWhats };

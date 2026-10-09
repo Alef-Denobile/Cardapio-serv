@@ -3,13 +3,15 @@
 const express = require('express');
 const bcrypt = require('bcryptjs');
 const rateLimit = require('express-rate-limit');
+const config = require('../config');
 const { sistema } = require('../db');
 const repo = require('../lib/repo');
 const { assinarAdmin, exigirAdmin } = require('../middleware/admin');
 const { criarRestaurante } = require('../lib/criarRestaurante');
 const { limparProduto, limparConfig } = require('../lib/dados');
 const { RECURSOS, recursosDe } = require('../lib/recursos');
-const { ErroApp, rota, texto, numero, centavos, uuidValido, tokenAleatorio } = require('../lib/util');
+const { ErroApp, rota, texto, numero, centavos, uuidValido, tokenAleatorio, urlBase } = require('../lib/util');
+const cobranca = require('../lib/cobranca');
 
 const r = express.Router();
 const limiteLogin = rateLimit({ windowMs: 15 * 60 * 1000, limit: 8, standardHeaders: true, legacyHeaders: false, message: { erro: 'Muitas tentativas de entrar. Aguarde 15 minutos.' } });
@@ -51,7 +53,7 @@ r.get('/restaurantes', rota(async (req, res) => {
       (SELECT max(criado_em) FROM pedidos p WHERE p.restaurante_id = r.id AND p.criado_em >= now() - interval '30 days') AS ultimo
     FROM restaurantes r ORDER BY r.nome`)).rows);
   res.json({ restaurantes: lista.map(x => { const o = repo.restObj(x, []); return { id: o.id, nome: o.nome, slug: o.slug, cor: o.cor, ativo: o.ativo, plano: o.plano, recursos: o.recursos, criadoEm: o.createdAt,
-    produtos: x.n_produtos, equipe: x.n_equipe, pedidosHoje: x.pedidos_hoje, pedidos30: x.pedidos_30, faturamento30: centavos(x.fat_30), ultimoPedido: x.ultimo }; }) });
+    suspensoCobranca: o.suspensoCobranca, mensalidade: o.cobranca.ativa ? o.cobranca.valor : 0, produtos: x.n_produtos, equipe: x.n_equipe, pedidosHoje: x.pedidos_hoje, pedidos30: x.pedidos_30, faturamento30: centavos(x.fat_30), ultimoPedido: x.ultimo }; }) });
 }));
 
 r.post('/restaurantes', rota(async (req, res) => {
@@ -84,7 +86,9 @@ r.patch('/restaurantes/:id/situacao', rota(async (req, res) => {
     const rest = await restDe(c, req.params.id), b = req.body || {}, mud = [];
     if ('ativo' in b && !!b.ativo !== rest.ativo){
       const motivo = b.ativo ? '' : texto(b.motivo, 200);
-      await c.query('UPDATE restaurantes SET ativo = $2, motivo_suspensao = $3 WHERE id = $1', [rest.id, !!b.ativo, motivo]);
+      await c.query('UPDATE restaurantes SET ativo = $2, motivo_suspensao = $3, suspenso_cobranca = false WHERE id = $1', [rest.id, !!b.ativo, motivo]);
+      // reativou quem estava suspenso por atraso: 3 dias de carência antes de a rotina suspender de novo
+      if (b.ativo && rest.suspensoCobranca) { await c.query("UPDATE restaurantes SET cobranca = cobranca || jsonb_build_object('carenciaAte', (now() + interval '3 days')::text) WHERE id = $1", [rest.id]); mud.push('3 dias de carência para pagar a mensalidade'); }
       mud.push(b.ativo ? 'Restaurante reativado' : 'Restaurante suspenso' + (motivo ? ' (' + motivo + ')' : ''));
     }
     if ('plano' in b && texto(b.plano, 40) !== rest.plano){ await c.query('UPDATE restaurantes SET plano = $2 WHERE id = $1', [rest.id, texto(b.plano, 40)]); mud.push('Plano: ' + rest.plano + ' → ' + texto(b.plano, 40)); }
@@ -99,6 +103,7 @@ r.put('/restaurantes/:id/recursos', rota(async (req, res) => {
     const rest = await restDe(c, req.params.id), atual = recursosDe(rest), b = req.body || {}, mud = [];
     for (const k of Object.keys(RECURSOS)) if (k in b && !!b[k] !== atual[k]){ await c.query('UPDATE restaurantes SET rec_' + k + ' = $2 WHERE id = $1', [rest.id, !!b[k]]); mud.push(RECURSOS[k] + ': ' + (b[k] ? 'ativado' : 'desativado')); }
     if (mud.length) await registrar(c, req, rest, 'Funções alteradas', mud.join(' · '));
+    require('../lib/dominios').limpar();
     return recursosDe(await repo.carregarRest(c, rest.id));
   });
   res.json({ recursos });
@@ -140,6 +145,7 @@ r.put('/restaurantes/:id/produtos/:pid', rota(async (req, res) => {
   const dados = limparProduto(req.body || {});
   const p = await sis(async c => {
     const rest = await restDe(c, req.params.id), antes = await prodDe(c, rest, req.params.pid), det = [];
+    { const comp = (antes.opcoes || []).filter(o => o.tipo === 'combo' || o.tipo === 'sabores'); if (comp.length && !dados.opcoes.some(o => o.tipo === 'combo' || o.tipo === 'sabores')) dados.opcoes = dados.opcoes.concat(comp); }
     if (antes.nome !== dados.nome) det.push('nome: ' + antes.nome + ' → ' + dados.nome);
     if (antes.preco !== dados.preco) det.push('preço: ' + reais(antes.preco) + ' → ' + reais(dados.preco));
     if (antes.categoria !== dados.categoria) det.push('categoria: ' + antes.categoria + ' → ' + dados.categoria);
@@ -211,7 +217,7 @@ r.post('/restaurantes/:id/equipe/:uid/senha', rota(async (req, res) => {
   const hash = await bcrypt.hash(senha, 10);
   await sis(async c => {
     const rest = await restDe(c, req.params.id), u = await userDe(c, rest, req.params.uid);
-    await c.query('UPDATE usuarios SET senha_hash = $2 WHERE id = $1', [u.id, hash]);
+    await c.query('UPDATE usuarios SET senha_hash = $2, senha_alterada_em = now() WHERE id = $1', [u.id, hash]);
     await registrar(c, req, rest, 'Senha redefinida', u.nome + ' · ' + u.email);
   });
   res.json({ ok: true });
@@ -258,6 +264,131 @@ r.post('/restaurantes/:id/totem/novo-codigo', rota(async (req, res) => {
     return t;
   });
   res.json({ token: t });
+}));
+
+/* ---------- domínio próprio ---------- */
+const dominios = require('../lib/dominios');
+r.put('/restaurantes/:id/dominio', rota(async (req, res) => {
+  const d = dominios.normalizar(req.body && req.body.dominio);
+  if (d && !dominios.valido(d)) throw new ErroApp(400, 'Domínio inválido. Use só o endereço, como pizzariadoze.com.br.');
+  let alvo = ''; try { alvo = config.dominioAlvo || (config.urlPublica ? new URL(config.urlPublica).hostname : ''); } catch (e) {}
+  if (d && dominios.daPlataforma(d)) throw new ErroApp(400, 'Esse é o endereço da plataforma. Informe o domínio do restaurante.');
+  const out = await sis(async c => {
+    const rest = await restDe(c, req.params.id);
+    try { await c.query('UPDATE restaurantes SET dominio = $2 WHERE id = $1', [rest.id, d || null]); }
+    catch (e) { if (e.code === '23505') throw new ErroApp(409, 'Esse domínio já está em outro restaurante.'); throw e; }
+    await registrar(c, req, rest, 'Domínio próprio', d ? (rest.dominio ? rest.dominio + ' → ' : '') + d : 'Removido (' + (rest.dominio || '-') + ')');
+    return d;
+  });
+  dominios.limpar();
+  res.json({ dominio: out, alvo });
+}));
+r.post('/restaurantes/:id/dominio/verificar', rota(async (req, res) => {
+  const rest = await sis(c => restDe(c, req.params.id));
+  if (!rest.dominio) throw new ErroApp(400, 'Cadastre o domínio primeiro.');
+  res.json(await dominios.verificar(rest.dominio));
+}));
+
+/* ---------- importar cardápio ---------- */
+const importar = require('../lib/importar');
+const brutoImp = express.raw({ type: () => true, limit: '8mb' });
+r.get('/modelo-cardapio.xlsx', rota(async (req, res) => {
+  res.set({ 'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'Content-Disposition': 'attachment; filename="modelo-cardapio.xlsx"' }).send(await importar.modelo());
+}));
+r.post('/restaurantes/:id/importar/planilha', brutoImp, rota(async (req, res) => {
+  await sis(c => restDe(c, req.params.id));
+  if (!Buffer.isBuffer(req.body) || !req.body.length) throw new ErroApp(400, 'Escolha o arquivo da planilha.');
+  res.json(await importar.planilha(req.body, req.get('content-type') || ''));
+}));
+r.post('/restaurantes/:id/importar/foto', brutoImp, rota(async (req, res) => {
+  await sis(c => restDe(c, req.params.id));
+  const b = req.body;
+  if (!Buffer.isBuffer(b) || b.length < 100) throw new ErroApp(400, 'Escolha a foto do cardápio.');
+  const img = (b[0] === 0xFF && b[1] === 0xD8) || (b[0] === 0x89 && b[1] === 0x50) || (b.slice(8, 12).toString() === 'WEBP');
+  if (!img) throw new ErroApp(400, 'Envie uma foto em JPG, PNG ou WEBP.');
+  res.json(await importar.foto(b, req.get('content-type') || ''));
+}));
+const jsonGrande = express.json({ limit: '6mb' }); // depois do login de dev
+r.post('/restaurantes/:id/importar/ifood', jsonGrande, rota(async (req, res) => {
+  await sis(c => restDe(c, req.params.id));
+  res.json(await importar.ifood({ url: req.body && req.body.url, json: req.body && req.body.json }));
+}));
+// Grava a lista revisada. Produto com o mesmo nome na mesma categoria: pula, ou atualiza o preço se pedido.
+r.post('/restaurantes/:id/importar', jsonGrande, rota(async (req, res) => {
+  const b = req.body || {}, itens = importar.normalizar(Array.isArray(b.itens) ? b.itens : []);
+  if (!itens.length) throw new ErroApp(400, 'Nenhum item para importar.');
+  const out = await sis(async c => {
+    const rest = await restDe(c, req.params.id);
+    const atuais = new Map((await c.query('SELECT id, nome, categoria, preco FROM produtos WHERE restaurante_id = $1', [rest.id])).rows.map(x => [(x.categoria + '|' + x.nome).toLowerCase(), x]));
+    let criados = 0, atualizados = 0, ignorados = 0;
+    for (const i of itens) {
+      const ja = atuais.get((i.categoria + '|' + i.nome).toLowerCase());
+      if (ja) { if (b.atualizarPrecos && Number(ja.preco) !== i.preco) { await c.query('UPDATE produtos SET preco = $2 WHERE id = $1', [ja.id, i.preco]); atualizados++; } else ignorados++; continue; }
+      await repo.criarProduto(c, rest.id, { categoria: i.categoria, nome: i.nome, descricao: i.descricao, preco: i.preco, selos: [], opcoes: [], fotoUrl: i.fotoUrl, esgotado: false, destaque: false, sugerir: false, fiscal: {} });
+      await repo.adicionarCategoria(c, rest.id, i.categoria); criados++;
+    }
+    await registrar(c, req, rest, 'Cardápio importado', (b.fonte ? b.fonte + ': ' : '') + criados + ' produto(s) novos, ' + atualizados + ' preço(s) atualizados, ' + ignorados + ' já existiam');
+    return { criados, atualizados, ignorados };
+  });
+  res.json(out);
+}));
+
+/* ---------- mensalidade ---------- */
+const listarFaturas = async (c, rid) => (await c.query(cobranca.SELECT_F + ' WHERE f.restaurante_id = $1 ORDER BY f.competencia DESC LIMIT 24', [rid])).rows.map(cobranca.faturaObj);
+r.get('/restaurantes/:id/cobranca', rota(async (req, res) => {
+  const base = urlBase(req);
+  res.json(await sis(async c => { const rest = await restDe(c, req.params.id); const faturas = await listarFaturas(c, rest.id);
+    return { cobranca: rest.cobranca, suspensoCobranca: rest.suspensoCobranca, faturas: faturas.map(f => Object.assign(f, { link: (base || '') + '/fatura/' + f.id + '?c=' + encodeURIComponent(f.codigo) })), provedor: config.cobranca.provedor, emailAtivo: require('../lib/email').ativo() }; }));
+}));
+r.put('/restaurantes/:id/cobranca', rota(async (req, res) => {
+  const b = req.body || {};
+  const valor = centavos(Math.max(0, numero(b.valor, 0))), dia = Math.trunc(numero(b.dia, 10)), tol = Math.trunc(numero(b.tolerancia, 5));
+  if (b.ativa && !(valor > 0)) throw new ErroApp(400, 'Informe o valor da mensalidade.');
+  if (dia < 1 || dia > 28) throw new ErroApp(400, 'O dia do vencimento vai de 1 a 28.');
+  if (tol < 0 || tol > 30) throw new ErroApp(400, 'A tolerância vai de 0 a 30 dias.');
+  const out = await sis(async c => {
+    const rest = await restDe(c, req.params.id), nova = { ativa: !!b.ativa, valor, dia, tolerancia: tol };
+    await c.query('UPDATE restaurantes SET cobranca = $2 WHERE id = $1', [rest.id, nova]);
+    await registrar(c, req, rest, 'Mensalidade alterada', (nova.ativa ? 'Ativa' : 'Desligada') + ' · ' + reais(valor) + ' · vence dia ' + dia + ' · tolerância ' + tol + ' dia(s)');
+    const atual = await repo.carregarRest(c, rest.id);
+    await cobranca.ajustarSituacao(c, atual); // desligar a cobrança reativa quem estava suspenso por atraso
+    return repo.carregarRest(c, rest.id);
+  });
+  res.json({ cobranca: out.cobranca, ativo: out.ativo });
+}));
+r.post('/restaurantes/:id/faturas', rota(async (req, res) => {
+  const f = await sis(async c => {
+    const rest = await restDe(c, req.params.id);
+    if (!rest.cobranca.ativa) throw new ErroApp(400, 'Ative a mensalidade antes de gerar a fatura.');
+    const f = await cobranca.gerarFatura(c, rest, true);
+    if (!f) throw new ErroApp(409, 'A fatura deste mês já existe.');
+    await registrar(c, req, rest, 'Fatura gerada', cobranca.mesTxt(f.competencia) + ' · ' + reais(f.valor));
+    return f;
+  });
+  res.status(201).json({ fatura: cobranca.faturaObj(f) });
+}));
+async function faturaDe(c, fid) {
+  if (!uuidValido(fid)) throw new ErroApp(404, 'Fatura não encontrada.');
+  const f = (await c.query('SELECT f.*, r.nome AS rest_nome FROM faturas f JOIN restaurantes r ON r.id = f.restaurante_id WHERE f.id = $1', [fid])).rows[0];
+  if (!f) throw new ErroApp(404, 'Fatura não encontrada.');
+  return f;
+}
+r.post('/faturas/:fid/paga', rota(async (req, res) => {
+  const obs = texto(req.body && req.body.obs, 200), f0 = await sis(c => faturaDe(c, req.params.fid));
+  const out = await cobranca.darBaixa(f0.id, 'manual', obs);
+  if (!out) throw new ErroApp(409, 'Esta fatura não está em aberto.');
+  await sis(async c => registrar(c, req, { id: f0.restaurante_id, nome: f0.rest_nome }, 'Fatura paga (baixa manual)', cobranca.mesTxt(f0.competencia) + ' · ' + reais(f0.valor) + (obs ? ' · ' + obs : '') + (out.situacao === 'reativado' ? ' · restaurante reativado' : '')));
+  res.json({ ok: true, situacao: out.situacao });
+}));
+r.post('/faturas/:fid/cancelar', rota(async (req, res) => {
+  await sis(async c => {
+    const f = await faturaDe(c, req.params.fid);
+    const u = (await c.query("UPDATE faturas SET status = 'cancelada' WHERE id = $1 AND status = 'aberta' RETURNING *", [f.id])).rows[0];
+    if (!u) throw new ErroApp(409, 'Esta fatura não está em aberto.');
+    await registrar(c, req, { id: f.restaurante_id, nome: f.rest_nome }, 'Fatura cancelada', cobranca.mesTxt(f.competencia) + ' · ' + reais(f.valor));
+    await cobranca.ajustarSituacao(c, await repo.carregarRest(c, f.restaurante_id));
+  });
+  res.json({ ok: true });
 }));
 
 /* ---------- consultas ---------- */

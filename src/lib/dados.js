@@ -6,17 +6,24 @@ function limparProduto(b) {
   if (!nome) throw new ErroApp(400, 'Dê um nome ao produto.');
   if (!categoria) throw new ErroApp(400, 'Escolha a categoria do produto.');
   if (!(preco >= 0)) throw new ErroApp(400, 'Informe um preço válido, por exemplo 39.90.');
-  const opcoes = (Array.isArray(b.opcoes) ? b.opcoes : []).slice(0, 10).map(o => ({
-    nome: texto(o.nome, 60), tipo: o.tipo === 'varios' ? 'varios' : 'um',
-    escolhas: (Array.isArray(o.escolhas) ? o.escolhas : []).slice(0, 30).map(e => ({ nome: texto(e.nome, 60), preco: centavos(Math.max(0, numero(e.preco, 0))) })).filter(e => e.nome)
-  })).filter(o => o.nome && o.escolhas.length);
+  const opcoes = (Array.isArray(b.opcoes) ? b.opcoes : []).slice(0, 10).map(o => {
+    // combo e meio a meio: as escolhas vêm de outra categoria do cardápio
+    if (o.tipo === 'combo') return { nome: texto(o.nome, 60) || 'Escolha', tipo: 'combo', categoria: texto(o.categoria, 60), qtd: Math.max(1, Math.min(5, Math.trunc(numero(o.qtd, 1)))), escolhas: [] };
+    if (o.tipo === 'sabores') return { nome: texto(o.nome, 60) || 'Sabores', tipo: 'sabores', categoria: texto(o.categoria, 60), max: Math.max(2, Math.min(4, Math.trunc(numero(o.max, 2)))), regra: o.regra === 'media' ? 'media' : 'maior', escolhas: [] };
+    return { nome: texto(o.nome, 60), tipo: o.tipo === 'varios' ? 'varios' : 'um',
+      escolhas: (Array.isArray(o.escolhas) ? o.escolhas : []).slice(0, 30).map(e => ({ nome: texto(e.nome, 60), preco: centavos(Math.max(0, numero(e.preco, 0))) })).filter(e => e.nome) };
+  }).filter(o => o.nome && (o.tipo === 'combo' || o.tipo === 'sabores' ? o.categoria : o.escolhas.length));
+  if (opcoes.some(o => (o.tipo === 'combo' || o.tipo === 'sabores') && o.categoria === categoria)) throw new ErroApp(400, 'O combo ou meio a meio precisa buscar os itens de outra categoria (ex.: produto em "Combos", sabores em "Pizzas").');
+  if (opcoes.filter(o => o.tipo === 'sabores').length > 1) throw new ErroApp(400, 'Use só um grupo de sabores por produto.');
   const selos = (Array.isArray(b.selos) ? b.selos : []).map(s => texto(s, 30)).filter(Boolean).slice(0, 6);
   const f = b.fiscal || {}, fiscal = {};
   const ncm = String(f.ncm || '').replace(/\D/g, ''), cfop = String(f.cfop || '').replace(/\D/g, ''), csosn = String(f.csosn || '').replace(/\D/g, '');
   if (ncm) { if (ncm.length !== 8) throw new ErroApp(400, 'O NCM tem 8 números (ex.: 2106.90.90).'); fiscal.ncm = ncm; }
   if (cfop) { if (cfop.length !== 4) throw new ErroApp(400, 'O CFOP tem 4 números (ex.: 5102).'); fiscal.cfop = cfop; }
   if (csosn) { if (csosn.length !== 3) throw new ErroApp(400, 'O CSOSN tem 3 números (ex.: 102).'); fiscal.csosn = csosn; }
-  return { nome, categoria, preco, descricao: texto(b.descricao, 240), selos, opcoes, fotoUrl: texto(b.fotoUrl, 500), esgotado: !!b.esgotado, destaque: !!b.destaque, sugerir: !!b.sugerir, fiscal };
+  // produtos por horário: só muda se o campo vier (a área de devs não mexe nele)
+  const disponibilidade = 'disponibilidade' in b ? require('./horarios').limpar(b.disponibilidade) : undefined;
+  return { nome, categoria, preco, descricao: texto(b.descricao, 240), selos, opcoes, fotoUrl: texto(b.fotoUrl, 500), esgotado: !!b.esgotado, destaque: !!b.destaque, sugerir: !!b.sugerir, fiscal, disponibilidade };
 }
 
 function limparConfig(b) {

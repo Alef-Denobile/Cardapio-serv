@@ -7,7 +7,7 @@ const N = n => String(n == null ? '' : n).padStart(3, '0'); // número do pedido
 const $ = s => document.querySelector(s), $$ = s => Array.from(document.querySelectorAll(s));
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const brl = v => (+v || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-const SLUG = (/^\/r\/([a-z0-9-]+)\/totem/.exec(location.pathname) || [])[1] || '';
+const SLUG = (/^\/r\/([a-z0-9-]+)\/totem/.exec(location.pathname) || [])[1] || (document.querySelector('meta[name="restaurante"]') || {}).content || '';
 const QS = new URLSearchParams(location.search), TOKEN = QS.get('t') || '', IMPRIMIR = QS.get('imprimir') === '1';
 const ICO_P = '<svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="24" cy="26" r="13"/><circle cx="24" cy="26" r="7"/><path d="M6 10v28M3.5 10v7a2.5 2.5 0 0 0 5 0v-7M44 10c-3 0-4 4-4 9h4v19"/></svg>', ICO_S = '<svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linejoin="round" aria-hidden="true"><path d="M9 16h30l-2.5 26h-25z"/><path d="M17 16a7 7 0 0 1 14 0"/></svg>';
 const PARADO_MS = 75000, AVISO_S = 15, FIM_S = 25;
@@ -22,8 +22,8 @@ async function api(m, url, corpo){
 }
 function toast(t){ const el = $('#toast'); el.textContent = t; el.hidden = false; clearTimeout(toast.t); toast.t = setTimeout(() => { el.hidden = true; }, 3200); }
 const prod = id => P.find(p => p.id === id);
-const unit = (p, sel) => p.preco + (p.opcoes || []).reduce((a, o, oi) => a + ((sel[oi] || []).reduce((b, x) => b + ((o.escolhas[x] || {}).preco || 0), 0)), 0);
-const nomesSel = (p, sel) => (p.opcoes || []).flatMap((o, oi) => (sel[oi] || []).map(x => (o.escolhas[x] || {}).nome)).filter(Boolean);
+const unit = (p, sel) => Opcoes.unit(p, sel || {});
+const nomesSel = (p, sel) => Opcoes.nomes(p, sel || {});
 const total = () => S.cart.reduce((a, l) => a + unit(prod(l.id), l.sel) * l.q, 0);
 const qtd = id => S.cart.filter(l => id == null || l.id === id).reduce((a, l) => a + l.q, 0);
 const cats = () => (R.categorias || []).filter(c => P.some(p => p.categoria === c));
@@ -40,12 +40,12 @@ function telaInicio(){
       : '<p class="tt-fechado">Estamos fechados agora. Abrimos às ' + esc(R.abre) + '.</p>') + '</div></section>';
 }
 function cardProd(p){
-  const n = qtd(p.id), extra = (p.opcoes || []).some(o => o.escolhas.some(e => e.preco));
+  const n = qtd(p.id), extra = Opcoes.variavel(p);
   return '<article class="tt-item' + (p.esgotado ? ' off' : '') + '"><button class="tt-ver" data-ver="' + p.id + '"' + (p.esgotado ? ' disabled' : '') + '>' + foto(p, 'tt-foto') +
     '<span class="tt-txt"><strong>' + esc(p.nome) + '</strong><small>' + esc(p.descricao) + '</small>' +
     ((p.selos || []).length ? '<span class="tt-selos">' + p.selos.map(x => '<i>' + esc(x) + '</i>').join('') + '</span>' : '') + '</span></button>' +
-    '<div class="tt-lado"><b>' + (extra ? '<em>a partir de</em>' : '') + brl(p.preco) + '</b>' +
-    (p.esgotado ? '<span class="tt-esg">Esgotado</span>' : '<button class="tt-add" data-ver="' + p.id + '" aria-label="Adicionar ' + esc(p.nome) + '"><span aria-hidden="true">+</span> Adicionar' + (n ? '<span class="tt-n" aria-label="' + n + ' no pedido">' + n + '</span>' : '') + '</button>') + '</div></article>';
+    '<div class="tt-lado"><b>' + (extra ? '<em>a partir de</em>' : '') + brl(Opcoes.aPartir(p)) + '</b>' +
+    (p.esgotado ? '<span class="tt-esg">' + (p.foraHorario ? 'Só ' + esc(p.foraHorario) : 'Esgotado') + '</span>' : '<button class="tt-add" data-ver="' + p.id + '" aria-label="Adicionar ' + esc(p.nome) + '"><span aria-hidden="true">+</span> Adicionar' + (n ? '<span class="tt-n" aria-label="' + n + ' no pedido">' + n + '</span>' : '') + '</button>') + '</div></article>';
 }
 function topo(titulo){
   const logo = R.logoUrl ? '<img class="tt-mlogo" src="' + esc(R.logoUrl) + '" alt="">' : '<span class="tt-mlogo mono" aria-hidden="true">' + esc(R.nome.split(/\s+/).map(w => w[0]).join('').slice(0, 2)) + '</span>';
@@ -76,14 +76,15 @@ function telaDados(){
   return topo('Quase lá') + '<div class="tt-pagina estreita">' +
     '<label class="tt-l" for="tt-nome">Como podemos chamar você?</label><input id="tt-nome" class="tt-in" maxlength="40" autocomplete="off" placeholder="Seu nome" value="' + esc(S.nome) + '">' +
     '<p class="tt-l">Onde vai comer?</p><div class="tt-seg"><button data-consumo="local" aria-pressed="' + (S.consumo === 'local') + '">Comer aqui</button><button data-consumo="viagem" aria-pressed="' + (S.consumo === 'viagem') + '">Para levar</button></div>' +
-    '<p class="tt-l">Como vai pagar?</p><div class="tt-seg">' + pags.map(m => '<button data-pag="' + m + '" aria-pressed="' + (S.pag === m) + '">' + (m === 'pix' ? 'Pix' : 'No caixa (cartão ou dinheiro)') + '</button>').join('') + '</div>' +
+    '<p class="tt-l">Como vai pagar?</p><div class="tt-seg">' + pags.map(m => '<button data-pag="' + m + '" aria-pressed="' + (S.pag === m) + '">' + (m === 'pix' ? (R.pixAuto ? 'Pix (pague aqui pelo QR)' : 'Pix') : 'No caixa (cartão ou dinheiro)') + '</button>').join('') + '</div>' +
     '<div class="tt-total"><span>Total</span><strong>' + brl(total()) + '</strong></div>' +
-    '<div class="tt-acoes"><button class="tt-sec" data-ir="carrinho">Voltar</button><button class="tt-pri" data-act="finalizar"' + (S.enviando ? ' disabled' : '') + '>' + (S.enviando ? 'Enviando…' : 'Finalizar pedido') + '</button></div></div>';
+    '<div class="tt-acoes"><button class="tt-sec" data-ir="carrinho">Voltar</button><button class="tt-pri" data-act="finalizar"' + (S.enviando ? ' disabled' : '') + '>' + (S.enviando ? 'Enviando…' : 'Finalizar pedido') + '</button></div>' +
+    '<p class="tt-legal">Ao finalizar, você concorda com os Termos de uso e o Aviso de privacidade do restaurante. Usamos o seu nome só para chamar você quando o pedido ficar pronto. Leia em ' + esc(location.host) + '/privacidade</p></div>';
 }
 function telaFim(){
-  const p = S.ultimo, pix = p.pagamento.metodo === 'pix';
+  const p = S.ultimo, pix = p.pagamento.metodo === 'pix' && !p.pagamento.pago, pago = p.pagamento.pago;
   return '<section class="tt-fim"><p class="tt-ok">Pedido recebido!</p><p>Sua senha é</p><div class="tt-senha">' + N(p.numero) + '</div>' +
-    '<p class="tt-fim-msg">' + esc((p.cliente && p.cliente.nome) || '') + ', ' + (pix ? 'pague ' + brl(p.total) + ' com Pix' + (R.chavePix ? ' na chave <strong>' + esc(R.chavePix) + '</strong>' : '') + ' e mostre o comprovante no balcão.' : 'pague ' + brl(p.total) + ' no caixa informando a sua senha.') +
+    '<p class="tt-fim-msg">' + esc((p.cliente && p.cliente.nome) || '') + ', ' + (pago ? 'seu Pix de ' + brl(p.total) + ' foi confirmado.' : pix ? 'pague ' + brl(p.total) + ' com Pix' + (R.chavePix ? ' na chave <strong>' + esc(R.chavePix) + '</strong>' : '') + ' e mostre o comprovante no balcão.' : 'pague ' + brl(p.total) + ' no caixa informando a sua senha.') +
     ' Vamos chamar pelo número quando ficar pronto' + (p.consumo === 'viagem' ? ', embalado para levar.' : '.') + '</p>' +
     '<button class="tt-pri" data-act="recomecar">Novo pedido</button><p class="tt-dica" id="tt-volta"></p></section>';
 }
@@ -91,7 +92,7 @@ function telaFim(){
 function render(){
   const app = $('#app');
   app.className = 'totem tela-' + S.tela;
-  app.innerHTML = { inicio: telaInicio, cardapio: telaCardapio, carrinho: telaCarrinho, dados: telaDados, fim: telaFim }[S.tela]();
+  app.innerHTML = { inicio: telaInicio, cardapio: telaCardapio, carrinho: telaCarrinho, dados: telaDados, pix: telaPix, fim: telaFim }[S.tela]();
   if (S.tela === 'cardapio'){ const l = $('.tt-lista'); if (l) l.scrollTop = 0; }
 }
 function ir(t){ S.tela = t; render(); window.scrollTo(0, 0); }
@@ -99,15 +100,15 @@ function ir(t){ S.tela = t; render(); window.scrollTo(0, 0); }
 /* ---------- produto ---------- */
 function abrirProduto(id){
   const p = prod(id); if (!p || p.esgotado) return;
-  S.item = { id, q: 1, sel: {} }; (p.opcoes || []).forEach((o, oi) => { S.item.sel[oi] = o.tipo === 'um' ? [0] : []; });
+  S.item = { id, q: 1, sel: Opcoes.inicial(p) };
   desenharProduto();
 }
 function desenharProduto(){
   const p = prod(S.item.id), it = S.item;
   $('#modal').innerHTML = '<div class="tt-veu-m" data-fechar><div class="tt-prod" role="dialog" aria-modal="true" aria-labelledby="tp-n">' + foto(p, 'tt-pimg') +
     '<div class="tt-pb"><h2 id="tp-n">' + esc(p.nome) + '</h2><p>' + esc(p.descricao) + '</p>' +
-    (p.opcoes || []).map((o, oi) => '<fieldset><legend>' + esc(o.nome) + ' <small>' + (o.tipo === 'um' ? 'escolha 1' : 'opcional') + '</small></legend><div class="tt-ops">' + o.escolhas.map((e, ei) =>
-      '<button type="button" class="tt-op" data-op="' + oi + ':' + ei + '" aria-pressed="' + it.sel[oi].includes(ei) + '"><span>' + esc(e.nome) + '</span>' + (e.preco ? '<b>+ ' + brl(e.preco) + '</b>' : '') + '</button>').join('') + '</div></fieldset>').join('') +
+    (p.opcoes || []).map((o, oi) => '<fieldset><legend>' + esc(o.nome) + ' <small>' + Opcoes.rotulo(o) + '</small></legend><div class="tt-ops">' + o.escolhas.map((e, ei) =>
+      '<button type="button" class="tt-op" data-op="' + oi + ':' + ei + '" aria-pressed="' + it.sel[oi].includes(ei) + '"' + (e.esgotado ? ' disabled' : '') + '><span>' + esc(e.nome) + (e.esgotado ? ' <small>(esgotado)</small>' : '') + '</span>' + (o.tipo === 'sabores' ? '<b>' + brl(e.preco) + '</b>' : o.tipo !== 'combo' && e.preco ? '<b>+ ' + brl(e.preco) + '</b>' : '') + '</button>').join('') + '</div></fieldset>').join('') +
     '<div class="tt-pf"><div class="tt-step grande"><button data-iq="-1" aria-label="Menos">−</button><span>' + it.q + '</span><button data-iq="1" aria-label="Mais">+</button></div>' +
     '<button class="tt-pri" data-act="adicionar">Adicionar · ' + brl(unit(p, it.sel) * it.q) + '</button></div><button class="tt-sec tt-x" data-fechar>Cancelar</button></div></div></div>';
 }
@@ -126,27 +127,50 @@ async function finalizar(){
   try {
     const d = await api('POST', '/api/r/' + encodeURIComponent(SLUG) + '/pedidos', { tipo: 'retirada', totem: TOKEN, consumo: S.consumo, cliente: { nome: S.nome },
       itens: S.cart.map(l => ({ produto: l.id, qtd: l.q, escolhas: l.sel })), obs: S.consumo === 'viagem' ? 'Para levar' : '', pagamento: { metodo: S.pag } });
-    S.ultimo = d.pedido; S.enviando = false; S.cart = [];
-    ir('fim');
-    if (IMPRIMIR && window.Cupom) Cupom.imprimir(d.pedido, R, 80).catch(() => {});
-    contarFim();
+    S.ultimo = d.pedido; S.codigo = d.codigo; S.enviando = false; S.cart = [];
+    if (d.pedido.status === 'aguardando' && d.pedido.pagamento && d.pedido.pagamento.pix){ ir('pix'); esperarPix(); return; }
+    concluir(d.pedido);
   } catch (e) {
     S.enviando = false; render(); toast(e.message);
     if (e.status === 409) recarregar();
   }
+}
+function concluir(p){
+  S.ultimo = p; ir('fim');
+  if (IMPRIMIR && window.Cupom) Cupom.imprimir(p, R, 80).catch(() => {});
+  contarFim();
+}
+// Pix automático: espera o pagamento (confere a cada 3 s) e só então mostra a senha
+function esperarPix(){
+  clearInterval(S.pixT);
+  S.pixT = setInterval(async () => {
+    if (S.tela !== 'pix' || !S.ultimo){ clearInterval(S.pixT); return; }
+    try {
+      const p = (await api('GET', '/api/acompanhar/' + encodeURIComponent(S.ultimo.id) + '?c=' + encodeURIComponent(S.codigo))).pedido;
+      if (p.status === 'aguardando') return;
+      clearInterval(S.pixT);
+      if (p.status === 'cancelado'){ toast('O tempo para pagar acabou. Faça o pedido de novo.'); recomecar(); return; }
+      concluir(p);
+    } catch (e) {}
+  }, 3000);
+}
+if (window.Pix) Pix.ligar(p => { if (S.tela === 'pix'){ clearInterval(S.pixT); concluir(p); } });
+function telaPix(){
+  return topo('Pague com Pix') + '<div class="tt-pagina estreita">' + Pix.bloco(S.ultimo, S.codigo, { grande: true }) +
+    '<p class="tt-legal">Assim que o Pix cair, sua senha aparece aqui. Prefere pagar no caixa? Toque em Recomeçar e escolha "No caixa".</p></div>';
 }
 function contarFim(){
   let s = FIM_S; clearInterval(S.fimT);
   const tick = () => { const el = $('#tt-volta'); if (S.tela !== 'fim'){ clearInterval(S.fimT); return; } if (el) el.textContent = 'Voltando ao início em ' + s + ' s'; if (s-- <= 0){ clearInterval(S.fimT); recomecar(); } };
   tick(); S.fimT = setInterval(tick, 1000);
 }
-function recomecar(){ clearInterval(S.fimT); fecharAviso(); fecharModal(); S.cart = []; S.nome = ''; S.cat = null; S.pag = 'local'; S.ultimo = null; ir('inicio'); recarregar(); }
+function recomecar(){ clearInterval(S.fimT); clearInterval(S.pixT); fecharAviso(); fecharModal(); S.cart = []; S.nome = ''; S.cat = null; S.pag = 'local'; S.ultimo = null; ir('inicio'); recarregar(); }
 async function recarregar(){ try { const d = await api('GET', '/api/r/' + encodeURIComponent(SLUG)); R = d.restaurante; P = d.produtos; S.cart = S.cart.filter(l => prod(l.id) && !prod(l.id).esgotado); if (S.tela === 'inicio' || S.tela === 'cardapio') render(); } catch (e) {} }
 
 /* ---------- parado: pergunta se ainda tem alguém e recomeça ---------- */
 function fecharAviso(){ if (S.aviso){ clearInterval(S.aviso); S.aviso = null; } const a = $('.tt-aviso'); if (a) a.remove(); }
 setInterval(() => {
-  if (S.tela === 'inicio' || S.tela === 'fim' || S.aviso || Date.now() - S.toque < PARADO_MS) return;
+  if (S.tela === 'inicio' || S.tela === 'fim' || S.aviso || Date.now() - S.toque < (S.tela === 'pix' ? 5 * 60000 : PARADO_MS)) return; // pagando o Pix no celular: espera mais
   let s = AVISO_S; const box = document.createElement('div'); box.className = 'tt-aviso';
   box.innerHTML = '<div><h2>Ainda está aí?</h2><p>O pedido vai recomeçar em <strong id="tt-av">' + s + '</strong> segundos.</p><div class="tt-acoes"><button class="tt-sec" data-act="recomecar">Recomeçar</button><button class="tt-pri" data-act="continuar">Continuar pedido</button></div></div>';
   document.body.appendChild(box);
@@ -165,13 +189,13 @@ document.addEventListener('click', e => {
   if (d.ir){ if (d.ir === 'dados'){ const i = $('#tt-nome'); if (i) S.nome = i.value; } ir(d.ir); return; }
   if (d.linha !== undefined){ const l = S.cart[+d.linha]; if (!l) return; l.q += +d.d; if (l.q <= 0) S.cart.splice(+d.linha, 1); if (!S.cart.length) ir('cardapio'); else render(); return; }
   if (d.op){ const [oi, ei] = d.op.split(':').map(Number), p = prod(S.item.id), o = p.opcoes[oi];
-    if (o.tipo === 'um') S.item.sel[oi] = [ei]; else { const st = new Set(S.item.sel[oi]); st.has(ei) ? st.delete(ei) : st.add(ei); S.item.sel[oi] = [...st].sort((a, b) => a - b); }
+    Opcoes.alternar(prod(S.item.id), S.item.sel, oi, ei); if (o.tipo === 'varios') S.item.sel[oi].sort((a, b) => a - b);
     desenharProduto(); return; }
   if (d.iq){ S.item.q = Math.max(1, Math.min(20, S.item.q + +d.iq)); desenharProduto(); return; }
   if (d.consumo){ S.nome = ($('#tt-nome') || {}).value || S.nome; S.consumo = d.consumo; render(); return; }
   if (d.pag){ S.nome = ($('#tt-nome') || {}).value || S.nome; S.pag = d.pag; render(); return; }
   switch (d.act){
-    case 'adicionar': adicionar(); break;
+    case 'adicionar': { const er = Opcoes.validar(prod(S.item.id), S.item.sel); if (er){ toast(er); break; } adicionar(); break; }
     case 'finalizar': finalizar(); break;
     case 'recomecar': recomecar(); break;
     case 'continuar': fecharAviso(); S.toque = Date.now(); break;

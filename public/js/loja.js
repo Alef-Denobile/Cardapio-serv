@@ -37,13 +37,41 @@ const S = { rota: 'home', cat: null, q: '', slide: 0, cart: [], ordem: 'rel',
   pedidos: [], pedidosCarregados: false, socket: null, aval: {} };
 const salvar = () => {
   gravar('loja:' + SLUG + ':cart', S.cart); gravar('chef:pedidos', S.meus.slice(0, 30)); gravar('chef:token', S.token || null); gravar('chef:user', S.user || null);
-  const C = S.checkout; gravar('loja:checkout', { tipo: C.tipo, pag: C.pag, nome: C.nome, tel: C.tel, end: C.end, compl: C.compl, bairro: C.bairro, bairroTxt: C.bairroTxt, lat: C.lat, lng: C.lng }); // o CPF não fica salvo no aparelho
+  const C = S.checkout; gravar('loja:checkout', { tipo: C.tipo, pag: C.pag, nome: C.nome, tel: C.tel, end: C.end, compl: C.compl, bairro: C.bairro, bairroTxt: C.bairroTxt, lat: C.lat, lng: C.lng, lembrar: !!C.lembrar, carrCod: C.carrCod || '' }); // o CPF não fica salvo no aparelho
+  agendarCarrinho();
 };
+/* Lembrete de carrinho (função extra): só com o "me lembrar" marcado e o WhatsApp preenchido */
+let tCarr = null;
+function agendarCarrinho(){ clearTimeout(tCarr); tCarr = setTimeout(sincronizarCarrinho, 2000); }
+async function sincronizarCarrinho(){
+  if (!R || !SLUG || !(R.recursos || {}).carrinho) return;
+  const C = S.checkout, tel = (C.tel || '').replace(/\D/g, '');
+  try {
+    if (C.lembrar && tel.length >= 10 && S.cart.length){
+      const d = await api('PUT', '/api/r/' + encodeURIComponent(SLUG) + '/carrinho', { codigo: C.carrCod || undefined, nome: C.nome, tel, itens: S.cart.map(x => ({ produto: x.id, qtd: x.q, escolhas: x.sel })) });
+      if (d.codigo && d.codigo !== C.carrCod){ C.carrCod = d.codigo; gravar('loja:checkout', Object.assign(ler('loja:checkout', {}), { carrCod: d.codigo })); }
+    } else if (C.carrCod && (!C.lembrar || !S.cart.length)){
+      const cod = C.carrCod; C.carrCod = ''; gravar('loja:checkout', Object.assign(ler('loja:checkout', {}), { carrCod: '' }));
+      await api('DELETE', '/api/r/' + encodeURIComponent(SLUG) + '/carrinho/' + encodeURIComponent(cod));
+    }
+  } catch (e) {}
+}
+async function restaurarCarrinho(){
+  const cod = new URLSearchParams(location.search).get('carrinho'); if (!cod) return;
+  try { history.replaceState(null, '', location.pathname + location.hash); } catch (e) {}
+  try {
+    const d = await api('GET', '/api/r/' + encodeURIComponent(SLUG) + '/carrinho/' + encodeURIComponent(cod));
+    if (d.finalizado){ toast('Esse pedido já foi feito. Bom apetite!'); return; }
+    const itens = (d.itens || []).filter(i => prod(i.produto) && !prod(i.produto).esgotado).map(i => ({ k: i.produto + '|' + JSON.stringify(i.escolhas || {}), id: i.produto, sel: i.escolhas || {}, q: i.qtd }));
+    if (!itens.length){ toast('Os itens daquele carrinho não estão mais disponíveis.'); return; }
+    S.cart = itens; S.checkout.carrCod = cod; salvar(); S.rota = 'carrinho'; toast('Seu carrinho voltou. É só finalizar!');
+  } catch (e) { toast(e.message); }
+}
 const prod = id => P.find(p => p.id === id);
 const noCarrinho = id => S.cart.filter(x => x.id === id).reduce((a, x) => a + x.q, 0);
 const selo = n => n ? '<span class="qtd-carr" aria-label="' + n + ' no carrinho">' + n + '</span>' : '';
-const unitario = (p, sel) => p.preco + (p.opcoes || []).reduce((a, o, oi) => a + ((sel && sel[oi]) || []).reduce((b, x) => b + ((o.escolhas[x] || {}).preco || 0), 0), 0);
-const nomesSel = (p, sel) => (p.opcoes || []).flatMap((o, oi) => ((sel && sel[oi]) || []).map(x => (o.escolhas[x] || {}).nome)).filter(Boolean);
+const unitario = (p, sel) => Opcoes.unit(p, sel || {});
+const nomesSel = (p, sel) => Opcoes.nomes(p, sel || {});
 
 /* ---------- peças visuais ---------- */
 function foto(url, alt, cls, letra){ return url ? '<img class="' + cls + '" src="' + esc(url) + '" alt="' + esc(alt) + '" loading="lazy">' : '<div class="' + cls + ' ph" aria-hidden="true">' + esc(letra) + '</div>'; }
@@ -67,8 +95,8 @@ const ICO = {
 const seta = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m9 5 7 7-7 7"/></svg>';
 function cardPrato(p){
   return '<article class="card"><button class="card-in" data-ver="' + p.id + '" aria-label="Ver ' + esc(p.nome) + '">' + foto(p.fotoUrl, p.nome, 'img', p.nome[0]) +
-    '<div class="bd"><h3>' + esc(p.nome) + '</h3><span class="rest">' + esc(p.descricao) + '</span><div class="ft"><span class="cat-tag">' + esc(p.categoria) + '</span><span class="preco">' + brlCurto(p.preco) + '</span></div></div></button>' +
-    (p.esgotado ? '<span class="esg">Esgotado</span>' : '<button class="add-r' + (noCarrinho(p.id) ? ' tem' : '') + '" data-add="' + p.id + '" aria-label="Adicionar ' + esc(p.nome) + ' ao carrinho">' + ICO.mais + selo(noCarrinho(p.id)) + '</button>') + '</article>';
+    '<div class="bd"><h3>' + esc(p.nome) + '</h3><span class="rest">' + esc(p.descricao) + '</span><div class="ft"><span class="cat-tag">' + esc(p.categoria) + '</span><span class="preco">' + brlCurto(Opcoes.aPartir(p)) + '</span></div></div></button>' +
+    (p.esgotado ? '<span class="esg">' + (p.foraHorario ? 'Só ' + esc(p.foraHorario) : 'Esgotado') + '</span>' : '<button class="add-r' + (noCarrinho(p.id) ? ' tem' : '') + '" data-add="' + p.id + '" aria-label="Adicionar ' + esc(p.nome) + ' ao carrinho">' + ICO.mais + selo(noCarrinho(p.id)) + '</button>') + '</article>';
 }
 function trilho(id, titulo, conteudo, extra, cls){
   return '<section><div class="sec-h"><h2>' + titulo + '</h2><div class="ctrl">' + (extra || '') + '<button class="seta" data-rail="' + id + '" data-dir="-1" aria-label="Anterior">' + ICO.esq + '</button><button class="seta" data-rail="' + id + '" data-dir="1" aria-label="Próximo">' + ICO.dir + '</button></div></div><div class="rail ' + (cls || '') + '" id="' + id + '">' + conteudo + '</div></section>';
@@ -105,7 +133,7 @@ function infoRest(){
 }
 function telaHome(){
   const slides = PROMOS.map((p, i) => '<div class="slide" role="group" aria-roledescription="slide" aria-label="' + (i + 1) + ' de ' + PROMOS.length + '"><div class="foto"><img src="' + esc(p.fotoUrl) + '" alt=""></div>' +
-    '<div class="selo" aria-hidden="true"><div><small>Por</small><strong>' + brlCurto(p.preco) + '</strong></div></div>' +
+    '<div class="selo" aria-hidden="true"><div><small>Por</small><strong>' + brlCurto(Opcoes.aPartir(p)) + '</strong></div></div>' +
     '<div class="txt"><span class="eyebrow">Destaque da casa</span><h3>' + esc(p.nome) + '</h3><p>' + esc(p.descricao) + '</p><button class="cta" data-add="' + p.id + '">Eu quero!</button></div></div>').join('');
   const cats = categorias();
   const sugest = P.filter(p => !p.esgotado).slice().sort((a, b) => (b.destaque ? 2 : 0) + (b.fotoUrl ? 1 : 0) - (a.destaque ? 2 : 0) - (a.fotoUrl ? 1 : 0)).slice(0, 10);
@@ -137,8 +165,8 @@ function itemLinha(p){
   const q = S.cart.filter(x => x.id === p.id).reduce((a, x) => a + x.q, 0);
   return '<div class="item" id="p-' + p.id + '"><button class="item-ver" data-ver="' + p.id + '" aria-label="Ver ' + esc(p.nome) + '">' + foto(p.fotoUrl, p.nome, 'th', p.nome[0]) + '</button><div style="min-width:0"><h3><button class="link-ver" data-ver="' + p.id + '">' + esc(p.nome) + '</button></h3><p>' + esc(p.descricao) + '</p>' +
     ((p.selos || []).length ? '<div class="selos">' + p.selos.map(s => '<span>' + esc(s) + '</span>').join('') + '</div>' : '') + ((p.opcoes || []).length ? '<p class="op-tag">Escolha ' + p.opcoes.map(o => esc(o.nome.toLowerCase())).join(' e ') + '</p>' : '') + '</div>' +
-    '<div class="lado"><span class="preco">' + ((p.opcoes || []).some(o => o.escolhas.some(e => e.preco)) ? '<small>a partir de</small> ' : '') + brlCurto(p.preco) + '</span>' +
-    (p.esgotado ? '<span class="esg-t">Esgotado</span>' : '<button class="btn add-btn" data-add="' + p.id + '" aria-label="Adicionar ' + esc(p.nome) + ' ao carrinho">' + ICO.mais + 'Adicionar' + selo(q) + '</button>') + '</div></div>';
+    '<div class="lado"><span class="preco">' + (Opcoes.variavel(p) ? '<small>a partir de</small> ' : '') + brlCurto(Opcoes.aPartir(p)) + '</span>' +
+    (p.esgotado ? '<span class="esg-t">' + (p.foraHorario ? 'Disponível ' + esc(p.foraHorario) : 'Esgotado') + '</span>' : '<button class="btn add-btn" data-add="' + p.id + '" aria-label="Adicionar ' + esc(p.nome) + ' ao carrinho">' + ICO.mais + 'Adicionar' + selo(q) + '</button>') + '</div></div>';
 }
 function telaProduto(){
   const p = prod(S.pid);
@@ -149,10 +177,10 @@ function telaProduto(){
     '<section class="prod"><div class="prod-foto">' + foto(p.fotoUrl, p.nome, 'pf', p.nome[0]) + '</div>' +
     '<form class="prod-info" id="f-prod" data-id="' + p.id + '" novalidate><span class="cat-tag">' + esc(p.categoria) + '</span><h1>' + esc(p.nome) + '</h1><p class="desc">' + esc(p.descricao) + '</p>' +
       ((p.selos || []).length ? '<div class="selos">' + p.selos.map(x => '<span>' + esc(x) + '</span>').join('') + '</div>' : '') +
-      '<p class="prod-preco">' + brl(p.preco) + '</p>' +
-      (p.opcoes || []).map((o, oi) => '<fieldset><legend>' + esc(o.nome) + ' <small>' + (o.tipo === 'um' ? 'escolha 1' : 'opcional') + '</small></legend>' + o.escolhas.map((e, ei) => '<label class="op"><input type="' + (o.tipo === 'um' ? 'radio' : 'checkbox') + '" name="o' + oi + '" value="' + ei + '"' + (o.tipo === 'um' && ei === 0 ? ' checked' : '') + '><span>' + esc(e.nome) + '</span><b>' + (e.preco ? '+ ' + brl(e.preco) : '') + '</b></label>').join('') + '</fieldset>').join('') +
-      (p.esgotado ? '<p class="esg-t">Esgotado no momento</p>' :
-        '<div class="prod-qtd"><span>Quantidade</span><div class="step"><button type="button" data-act="qtd-menos" aria-label="Menos um">−</button><span id="prod-q" aria-live="polite">' + q + '</span><button type="button" data-act="qtd-mais" aria-label="Mais um">+</button></div><strong id="prod-total">' + brl(p.preco * q) + '</strong></div>' +
+      '<p class="prod-preco">' + (Opcoes.variavel(p) ? '<small>a partir de</small> ' : '') + brl(Opcoes.aPartir(p)) + '</p>' +
+      Opcoes.campos(p, esc, brl) +
+      (p.esgotado ? '<p class="esg-t">' + (p.foraHorario ? 'Disponível ' + esc(p.foraHorario) : 'Esgotado no momento') + '</p>' :
+        '<div class="prod-qtd"><span>Quantidade</span><div class="step"><button type="button" data-act="qtd-menos" aria-label="Menos um">−</button><span id="prod-q" aria-live="polite">' + q + '</span><button type="button" data-act="qtd-mais" aria-label="Mais um">+</button></div><strong id="prod-total">' + brl(Opcoes.unit(p, Opcoes.inicial(p)) * q) + '</strong></div>' +
         '<div class="prod-acao"><button type="submit" class="btn prod-add"><span class="ico-carr">' + ICO.carr + selo(noCarr) + '</span>Adicionar ao carrinho</button><button type="button" class="btn prod-pagar" data-act="pagar-agora">Pagar</button></div>' +
         '') + '</form></section>' +
     (outros.length ? '<section><div class="sec-h"><h2>Mais opções de ' + esc(p.categoria.toLowerCase()) + '</h2><span class="nota">' + outros.length + ' ' + (outros.length === 1 ? 'opção' : 'opções') + '</span></div><div class="grid-r">' + outros.map(cardPrato).join('') + '</div></section>' : '');
@@ -160,7 +188,8 @@ function telaProduto(){
 function atualizarProd(){ const f = $('#f-prod'); if (!f || !$('#prod-total')) return; const p = prod(f.dataset.id), q = S.qtdProd || 1; $('#prod-q').textContent = q; $('#prod-total').textContent = brl(unitario(p, selDoForm(p, '#f-prod')) * q); }
 function adicionarDaPagina(irParaCarrinho){
   const f = $('#f-prod'); if (!f) return; const p = prod(f.dataset.id); if (!p || p.esgotado) return;
-  colocar(p.id, selDoForm(p, '#f-prod'), S.qtdProd || 1, irParaCarrinho);
+  const sel = selDoForm(p, '#f-prod'), er = Opcoes.validar(p, sel); if (er){ toast(er); return; }
+  colocar(p.id, sel, S.qtdProd || 1, irParaCarrinho);
 }
 
 function totais(){
@@ -177,6 +206,8 @@ function totais(){
   return { itens, sub, taxa, total: sub + taxa, n: itens.reduce((a, i) => a + i.q, 0), tipo, bairro, dist, semPonto, foraArea };
 }
 const NOME_PAG = { online: 'No site', pix: 'Pix', cartao: 'Cartão', dinheiro: 'Dinheiro', local: 'No local' };
+// Pix automático: paga agora pelo QR e o pedido entra sozinho quando o Pix cai (sem CPF)
+const pixAutoSel = () => !!(R && R.pixAuto) && S.checkout.pag === 'pix';
 function blocoResumo(){
   const t = totais(), C = S.checkout, d = R.delivery || {};
   const pags = t.tipo ? ((R.pagamentos || {})[t.tipo] || []) : [];
@@ -194,11 +225,12 @@ function blocoResumo(){
   if (t.itens.length && !semCanal){
     const online = t.tipo === 'delivery' && C.pag === 'online';
     const quem = online
-      ? (S.user ? '<div class="conta"><span>Pagando com a conta de <strong>' + esc(S.user.nome) + '</strong></span><button data-act="sair">Sair</button></div>'
+      ? (S.user ? '<div class="conta"><span>Pagando com a conta de <strong>' + esc(S.user.nome) + '</strong></span><button data-act="minha-conta">Minha conta</button><button data-act="sair">Sair</button></div>'
         : '<div class="alerta">Para pagar pelo site, entre na sua conta ou crie uma (leva 1 minuto).</div><button class="chip" data-act="login" style="justify-self:start">Entrar ou criar conta</button>')
       : '<label for="nome">Seu nome</label><input id="nome" placeholder="Como chamar você" value="' + esc(C.nome) + '" autocomplete="name" maxlength="60">' +
         '<label for="tel">WhatsApp com DDD</label><input id="tel" inputmode="tel" placeholder="(15) 99999-0000" value="' + esc(C.tel) + '" autocomplete="tel">' +
-        (t.tipo === 'delivery' ? '<label for="cpf">CPF</label><input id="cpf" inputmode="numeric" placeholder="000.000.000-00" maxlength="14" value="' + esc(C.cpf || '') + '" autocomplete="off"><p class="dica">Para pagar na entrega pedimos o CPF, para proteger o restaurante de pedidos falsos.</p>' : '');
+        ((R.recursos || {}).carrinho ? '<label class="lembrar" for="lembrar"><input type="checkbox" id="lembrar"' + (C.lembrar ? ' checked' : '') + '> Pode me lembrar pelo WhatsApp se eu não terminar o pedido (uma mensagem só)</label>' : '') +
+        (t.tipo === 'delivery' && !pixAutoSel() ? '<label for="cpf">CPF</label><input id="cpf" inputmode="numeric" placeholder="000.000.000-00" maxlength="14" value="' + esc(C.cpf || '') + '" autocomplete="off"><p class="dica">Para pagar na entrega pedimos o CPF, para proteger o restaurante de pedidos falsos.</p>' : '');
     const distTxt = t.semPonto ? 'Toque no mapa ou arraste o pino até a sua porta.' : t.foraArea ? 'Fica a ' + kmTxt(t.dist.km) + ': fora da área de entrega (até ' + kmTxt(t.dist.max) + ').' : t.dist ? 'A ' + kmTxt(t.dist.km) + ' do restaurante · entrega ' + (t.taxa ? brl(t.taxa) : 'grátis') : '';
     const endereco = modoDist()
       ? '<label for="end">Endereço de entrega</label><div class="busca-end"><input id="end" placeholder="Rua e número" value="' + esc(C.end) + '" autocomplete="street-address">' + (R.buscaEndereco ? '<button type="button" class="chip" data-act="buscar-end">Buscar</button>' : '') + '</div>' +
@@ -219,6 +251,7 @@ function blocoResumo(){
       (t.tipo === 'delivery' ? endereco : '<div class="alerta">Retire no restaurante' + (quando === 'agendar' ? ' no horário escolhido' : ' em ' + esc(d.tempoRetirada)) + '.</div>') +
       '<label>Pagamento</label><div class="pag" style="grid-template-columns:repeat(' + pags.length + ',1fr)">' + pags.map(o => '<button data-pag="' + o + '" aria-pressed="' + (C.pag === o) + '">' + NOME_PAG[o] + '</button>').join('') + '</div>' +
       (online ? '<p class="dica">Cartão ou Pix, pago agora pelo site. O restaurante recebe o pedido assim que o pagamento é aprovado.</p>' : '') +
+      (pixAutoSel() ? '<p class="dica">Você paga agora pelo QR Code ou Pix copia e cola. O pedido vai para a cozinha assim que o Pix cair, sem precisar mandar comprovante.</p>' : '') +
       (C.pag === 'dinheiro' ? '<label for="troco">Troco para (opcional)</label><input id="troco" type="number" min="0" placeholder="Ex.: 100" value="' + esc(C.troco) + '">' : '') +
       quem + '<label for="obs">Observações (opcional)</label><input id="obs" placeholder="Ex.: sem cebola, mandar talheres" value="' + esc(C.obs) + '" maxlength="300">' +
       (abaixo ? '<div class="alerta">Pedido mínimo para entrega: ' + brl(d.pedidoMinimo) + '.</div>' : '') + (fechado ? '<div class="alerta">O restaurante está fechado agora. Abre às ' + esc(R.abre) + '.</div>' : '');
@@ -231,7 +264,8 @@ function blocoResumo(){
     '<div class="lin tot"><span>Total</span><span>' + brl(t.total) + '</span></div>' + form +
     (semCanal ? '<div class="alerta">Este restaurante não está recebendo pedidos pelo site agora. Fale com ele pelo WhatsApp.</div>' : '') +
     '<button class="pedir" data-act="pedir" id="pedir"' + (t.itens.length && !abaixo && !fechado && !semCanal && !semLocal ? '' : ' disabled') + '>' + ICO.check + (online ? 'Ir para o pagamento' : quando === 'agendar' ? 'Agendar pedido' : 'Pedir agora') + '</button>' +
-    (t.itens.length && !online && !semCanal ? '<p class="semcad">Sem cadastro e sem senha. Seu nome e WhatsApp ficam só neste aparelho para o próximo pedido.</p>' : '') + '</aside>';
+    (t.itens.length && !online && !semCanal ? '<p class="semcad">Sem cadastro e sem senha. Seu nome e WhatsApp ficam só neste aparelho para o próximo pedido.</p>' : '') +
+    (t.itens.length && !semCanal ? '<p class="semcad legal">Ao pedir, você concorda com os <a href="/termos?r=' + encodeURIComponent(SLUG) + '" target="_blank" rel="noopener">Termos de uso</a> e o <a href="/privacidade?r=' + encodeURIComponent(SLUG) + '" target="_blank" rel="noopener">Aviso de privacidade</a>.</p>' : '') + '</aside>';
 }
 function telaCarrinho(){
   const t = totais();
@@ -257,12 +291,13 @@ function telaPedidos(){
   if (!meus.length) return '<section><div class="sec-h"><h2>Pedidos</h2></div><div class="vazio-g"><strong>Nenhum pedido hoje neste aparelho</strong>Quando pedir, você acompanha cada etapa por aqui, em tempo real. Não precisa de cadastro.<div style="margin-top:14px"><button class="btn" data-go="cardapio">Ver o cardápio</button></div></div></section>';
   return '<section><div class="sec-h"><h2>Pedidos</h2><span class="nota">Pedidos de hoje feitos neste aparelho · atualiza sozinho quando o restaurante muda a etapa</span></div><div class="lista-ped">' + meus.map(p => {
     const cur = ORDEM.indexOf(p.status), canc = p.status === 'cancelado', m = S.meus.find(x => x.id === p.id), nota = S.aval[p.id] || 0;
-    const pix = p.pagamento.metodo === 'pix' && !p.pagamento.pago && !canc;
+    const pix = p.pagamento.metodo === 'pix' && !p.pagamento.pago && !canc && !p.pagamento.pixAuto;
     return '<article class="ped"><div class="ped-h"><div><h3>Pedido #' + N(p.numero) + '</h3><small>' + new Date(p.criadoEm).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) + ' · ' + p.linhas.map(x => x.qtd + '× ' + esc(x.nome)).join(', ') + '</small></div>' +
       '<div style="display:flex;gap:10px;align-items:center"><span class="badge' + (p.status === 'entregue' ? ' ok' : '') + '">' + STATUS_TXT[p.status] + '</span><strong class="preco">' + brl(p.total) + '</strong></div></div>' +
       (p.agendadoPara && !canc && p.status !== 'entregue' ? '<p class="agendado">' + ICO.relogio + 'Agendado para ' + esc(quandoTxt(p.agendadoPara)) + '</p>' : '') +
-      (p.status === 'aguardando' ? '<div class="pixped"><span>' + (p.pagamento.online === 'recusado' ? 'O pagamento não foi aprovado. Tente de novo ou use outro cartão.' : 'Falta pagar para o restaurante receber o pedido.') + '</span>' + (m ? '<a class="btn" href="/pagar/' + esc(p.id) + '?c=' + encodeURIComponent(m.c) + '">Pagar agora</a>' : '') + '</div>' :
-       canc ? '<p style="margin:0;color:var(--muted)">' + (p.pagamento.metodo === 'online' && !p.pagamento.pago ? 'O pagamento não foi concluído a tempo, então o pedido foi cancelado. Nada foi cobrado.' : 'O restaurante cancelou este pedido. Se você já pagou, fale com o restaurante para o estorno.') + '</p>' :
+      (p.status === 'aguardando' && p.pagamento.pix ? Pix.bloco(p, m && m.c) :
+       p.status === 'aguardando' ? '<div class="pixped"><span>' + (p.pagamento.online === 'recusado' ? 'O pagamento não foi aprovado. Tente de novo ou use outro cartão.' : 'Falta pagar para o restaurante receber o pedido.') + '</span>' + (m ? '<a class="btn" href="/pagar/' + esc(p.id) + '?c=' + encodeURIComponent(m.c) + '">Pagar agora</a>' : '') + '</div>' :
+       canc ? '<p style="margin:0;color:var(--muted)">' + ((p.pagamento.metodo === 'online' || p.pagamento.pixAuto) && !p.pagamento.pago ? 'O pagamento não foi concluído a tempo, então o pedido foi cancelado. Nada foi cobrado.' : 'O restaurante cancelou este pedido. Se você já pagou, fale com o restaurante para o estorno.') + '</p>' :
        '<div class="trilha">' + etapas(p).map(e => '<div class="' + (ORDEM.indexOf(e[0]) <= cur ? 'on' : '') + '">' + e[1] + (e[0] === 'rota' && p.entregador && cur >= 3 ? ' com ' + esc(p.entregador.nome) : '') + '</div>').join('') + '</div>') +
       (pix ? '<div class="pixped"><span>Pague ' + brl(p.total) + ' com Pix' + (R.chavePix ? ': <code>' + esc(R.chavePix) + '</code>' : '') + '</span>' + (R.chavePix ? '<button class="chip" data-copiar="' + esc(R.chavePix) + '">Copiar chave</button>' : '') + '</div>' : '') +
       (p.status === 'entregue' && !p.avaliacao ? '<div class="aval"><strong>Como foi o pedido?</strong><div class="es" role="radiogroup" aria-label="Nota">' + [1, 2, 3, 4, 5].map(n => '<button data-nota="' + p.id + ':' + n + '" class="' + (n <= nota ? 'on' : '') + '" role="radio" aria-checked="' + (n === nota) + '" aria-label="' + n + ' estrela' + (n > 1 ? 's' : '') + '"><svg viewBox="0 0 24 24" fill="currentColor">' + STAR + '</svg></button>').join('') + '</div>' +
@@ -340,8 +375,8 @@ function tirar(id){ const ls = S.cart.filter(x => x.id === id); if (!ls.length) 
 function abrirOpcoes(p){
   $('#modal').innerHTML = '<div class="veu" data-fechar><form class="caixa opcoes" id="f-op" data-id="' + p.id + '" role="dialog" aria-modal="true" aria-labelledby="op-t">' + (p.fotoUrl ? '<img class="op-foto" src="' + esc(p.fotoUrl) + '" alt="">' : '') +
     '<h3 id="op-t">' + esc(p.nome) + '</h3><p>' + esc(p.descricao) + '</p>' +
-    p.opcoes.map((o, oi) => '<fieldset><legend>' + esc(o.nome) + ' <small>' + (o.tipo === 'um' ? 'escolha 1' : 'opcional') + '</small></legend>' + o.escolhas.map((e, ei) => '<label class="op"><input type="' + (o.tipo === 'um' ? 'radio' : 'checkbox') + '" name="o' + oi + '" value="' + ei + '"' + (o.tipo === 'um' && ei === 0 ? ' checked' : '') + '><span>' + esc(e.nome) + '</span><b>' + (e.preco ? '+ ' + brl(e.preco) : '') + '</b></label>').join('') + '</fieldset>').join('') +
-    '<div class="row"><button type="button" class="btn sec" data-fechar>Cancelar</button><button type="submit" class="btn" id="op-ok">Adicionar · ' + brl(p.preco) + '</button></div></form></div>';
+    Opcoes.campos(p, esc, brl) +
+    '<div class="row"><button type="button" class="btn sec" data-fechar>Cancelar</button><button type="submit" class="btn" id="op-ok">Adicionar · ' + brl(Opcoes.unit(p, Opcoes.inicial(p))) + '</button></div></form></div>';
   atualizarOpcoes(); const f = $('#f-op input'); if (f) f.focus();
 }
 function selDoForm(p, form){ const f = form || '#f-op', sel = {}; (p.opcoes || []).forEach((o, oi) => { const v = $$(f + ' input[name="o' + oi + '"]:checked').map(i => +i.value); if (v.length) sel[oi] = v; }); return sel; }
@@ -371,7 +406,7 @@ async function pedir(){
   if (!online){
     if (nome.length < 2){ toast('Diga seu nome para o restaurante saber de quem é o pedido.'); const i = $('#nome'); if (i) i.focus(); return; }
     if (tel.replace(/\D/g, '').length < 10){ toast('Informe seu WhatsApp com DDD.'); const i = $('#tel'); if (i) i.focus(); return; }
-    if (t.tipo === 'delivery' && !cpfValido(cpf)){ toast(cpf ? 'CPF inválido. Confira os números.' : 'Para pagar na entrega, informe seu CPF.'); const i = $('#cpf'); if (i) i.focus(); return; }
+    if (t.tipo === 'delivery' && !pixAutoSel() && !cpfValido(cpf)){ toast(cpf ? 'CPF inválido. Confira os números.' : 'Para pagar na entrega, informe seu CPF.'); const i = $('#cpf'); if (i) i.focus(); return; }
   }
   if (t.tipo === 'delivery' && C.end.trim().length < 4){ toast('Informe a rua e o número para a entrega.'); const i = $('#end'); if (i) i.focus(); return; }
   if (t.tipo === 'delivery' && modoDist()){
@@ -387,10 +422,10 @@ async function pedir(){
       agendarPara: C.quando === 'agendar' && agenda().length ? C.agEm : undefined,
       itens: t.itens.map(i => ({ produto: i.p.id, qtd: i.q, escolhas: i.x.sel })), obs: C.obs, pagamento: { metodo: C.pag, troco: C.pag === 'dinheiro' ? C.troco : 0 } });
     S.meus = [{ id: d.pedido.id, c: d.codigo }].concat(S.meus.filter(x => x.id !== d.pedido.id)).slice(0, 30);
-    S.cart = []; C.troco = ''; C.obs = ''; salvar();
+    S.cart = []; C.troco = ''; C.obs = ''; C.carrCod = ''; salvar();
     if (d.pagamento && d.pagamento.url){ location.href = d.pagamento.url; return; }
     conectarTempoReal();
-    toast('Pedido #' + N(d.pedido.numero) + (d.pedido.agendadoPara ? ' agendado para ' + quandoTxt(d.pedido.agendadoPara) : ' enviado!'));
+    toast(d.pedido.pagamento && d.pedido.pagamento.pix ? 'Pedido #' + N(d.pedido.numero) + ' criado. Pague o Pix para o restaurante receber.' : 'Pedido #' + N(d.pedido.numero) + (d.pedido.agendadoPara ? ' agendado para ' + quandoTxt(d.pedido.agendadoPara) : ' enviado!'));
     ir('pedidos');
   } catch (e) {
     toast(e.message); render();
@@ -400,6 +435,7 @@ async function pedir(){
 async function recarregarCardapio(){ try { await carregar(); render(); } catch (e) {} }
 
 /* ---------- pedidos deste aparelho (sem conta) ---------- */
+if (window.Pix) Pix.ligar(() => { toast('Pagamento confirmado! O pedido foi para a cozinha.'); carregarPedidos(); });
 async function carregarPedidos(){
   if (!S.meus.length){ S.pedidos = []; S.pedidosCarregados = true; if (S.rota === 'pedidos') render(); return; }
   try {
@@ -432,14 +468,42 @@ function abrirLogin(msg, modo){
     '<button type="button" class="fechar" data-fechar aria-label="Fechar">×</button><div class="logo-login">' + esc(R.nome) + '</div>' + (msg ? '<div class="msg">' + esc(msg) + '</div>' : '') +
     (entrar ? '' : '<input id="l-nome" placeholder="Seu nome" autocomplete="name" aria-label="Nome" maxlength="60"><input id="l-tel" inputmode="tel" placeholder="WhatsApp com DDD" autocomplete="tel" aria-label="WhatsApp com DDD"><input id="l-cpf" inputmode="numeric" placeholder="CPF" maxlength="14" autocomplete="off" aria-label="CPF">') +
     '<input id="l-email" type="email" placeholder="Seu e-mail" autocomplete="email" aria-label="E-mail"><input id="l-senha" type="password" placeholder="' + (entrar ? 'Sua senha' : 'Crie uma senha (mínimo 8)') + '" autocomplete="' + (entrar ? 'current-password' : 'new-password') + '" aria-label="Senha">' +
+    (entrar ? '' : '<label class="aceite" for="l-termos"><input type="checkbox" id="l-termos"> Li e aceito os <a href="/termos?r=' + encodeURIComponent(SLUG) + '" target="_blank" rel="noopener">Termos de uso</a> e o <a href="/privacidade?r=' + encodeURIComponent(SLUG) + '" target="_blank" rel="noopener">Aviso de privacidade</a></label>') +
     '<button class="b1" type="submit" id="l-btn">' + (entrar ? 'Entrar' : 'Criar conta') + '</button>' +
     '<div class="links"><button type="button" class="troca" data-act="' + (entrar ? 'modo-criar' : 'modo-entrar') + '">' + (entrar ? 'Criar conta' : 'Já tenho conta') + '</button>' + (entrar ? '<button type="button" class="troca" data-act="esqueci">Esqueci minha senha</button>' : '') + '</div>' +
     '<div class="msg" id="l-msg" hidden></div></form></div>';
   $(entrar ? '#l-email' : '#l-nome').focus();
 }
-function esqueciSenha(){
-  const m = $('#l-msg'); m.hidden = false;
-  m.textContent = 'Fale com o ' + R.nome + (R.whatsapp ? ' pelo WhatsApp ' + R.whatsapp : '') + ' para criar uma senha nova. Você também pode pagar na entrega, sem conta.';
+function minhaConta(){
+  if (!S.user) return;
+  $('#modal').innerHTML = '<div class="veu" data-fechar><div class="login" role="dialog" aria-modal="true" aria-label="Minha conta"><button type="button" class="fechar" data-fechar aria-label="Fechar">×</button>' +
+    '<div class="logo-login">Minha conta</div><div class="msg"><strong>' + esc(S.user.nome) + '</strong><br>' + esc(S.user.email) + (S.user.telefone ? '<br>' + esc(S.user.telefone) : '') + '</div>' +
+    '<button type="button" class="b1" data-act="baixar-dados">Baixar meus dados</button>' +
+    '<p class="dica-c">Você recebe um arquivo com a sua conta, seus pedidos e suas avaliações.</p>' +
+    '<details class="apagar"><summary>Apagar minha conta</summary><p>A conta, as avaliações e os favoritos são apagados. Os pedidos continuam no restaurante (obrigação fiscal), sem ligação com você.</p>' +
+    '<input id="ap-senha" type="password" placeholder="Sua senha, para confirmar" autocomplete="current-password" aria-label="Senha para confirmar"><button type="button" class="b2" data-act="apagar-conta">Apagar minha conta</button></details>' +
+    '<p class="dica-c"><a href="/privacidade?r=' + encodeURIComponent(SLUG) + '" target="_blank" rel="noopener">Aviso de privacidade</a> · <a href="/termos?r=' + encodeURIComponent(SLUG) + '" target="_blank" rel="noopener">Termos de uso</a></p><div class="msg" id="mc-msg" hidden></div></div></div>';
+}
+async function baixarDados(){
+  try {
+    const r = await fetch('/api/clientes/eu/dados', { headers: { Authorization: 'Bearer ' + S.token } });
+    if (!r.ok) throw new Error('Não foi possível gerar o arquivo. Entre de novo e tente outra vez.');
+    const blob = await r.blob(), a = document.createElement('a'), url = URL.createObjectURL(blob);
+    a.href = url; a.download = 'meus-dados.json'; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 2000);
+  } catch (e) { const m = $('#mc-msg'); if (m){ m.hidden = false; m.textContent = e.message; } }
+}
+async function apagarConta(){
+  const m = $('#mc-msg'), senha = ($('#ap-senha') || {}).value || '';
+  if (!senha){ m.hidden = false; m.textContent = 'Digite a sua senha para confirmar.'; return; }
+  try { await api('DELETE', '/api/clientes/eu', { senha }); sairDaConta(); fechar(); render(); toast('Sua conta foi apagada.'); }
+  catch (e) { m.hidden = false; m.textContent = e.message; }
+}
+async function esqueciSenha(){
+  const m = $('#l-msg'), em = ($('#l-email').value || '').trim(); m.hidden = false;
+  if (!/^\S+@\S+\.\S+$/.test(em)){ m.textContent = 'Digite o seu e-mail acima e toque de novo em "Esqueci minha senha" para receber um link.'; $('#l-email').focus(); return; }
+  m.textContent = 'Enviando…';
+  try { const d = await api('POST', '/api/senha/esqueci', { email: em, tipo: 'cliente', slug: SLUG }); m.textContent = d.mensagem; }
+  catch (e) { m.textContent = e.message; }
 }
 
 /* ---------- eventos ---------- */
@@ -483,6 +547,9 @@ document.addEventListener('click', async e => {
     case 'minha-loc': minhaLocalizacao(el); break;
     case 'login': pedirDepoisDoLogin = false; abrirLogin(); break;
     case 'sair': sairDaConta(); render(); toast('Você saiu da conta'); break;
+    case 'minha-conta': minhaConta(); break;
+    case 'baixar-dados': baixarDados(); break;
+    case 'apagar-conta': apagarConta(); break;
     case 'modo-entrar': abrirLogin('', 'entrar'); break;
     case 'modo-criar': abrirLogin(''); break;
     case 'esqueci': esqueciSenha(); break;
@@ -490,13 +557,13 @@ document.addEventListener('click', async e => {
 });
 document.addEventListener('submit', async e => {
   if (e.target.id === 'f-prod'){ e.preventDefault(); adicionarDaPagina(false); return; }
-  if (e.target.id === 'f-op'){ e.preventDefault(); const p = prod(e.target.dataset.id); const sel = selDoForm(p); fechar(); colocar(p.id, sel, 1, false); return; }
+  if (e.target.id === 'f-op'){ e.preventDefault(); const p = prod(e.target.dataset.id); const sel = selDoForm(p); const er = Opcoes.validar(p, sel); if (er){ toast(er); return; } fechar(); colocar(p.id, sel, 1, false); return; }
   if (e.target.id !== 'f-login') return; e.preventDefault();
   const modo = e.target.dataset.modo, m = $('#l-msg'), b = $('#l-btn');
   const corpo = { email: $('#l-email').value.trim(), senha: $('#l-senha').value };
   if (modo === 'criar'){
-    Object.assign(corpo, { nome: $('#l-nome').value.trim(), telefone: $('#l-tel').value.trim(), cpf: $('#l-cpf').value });
-    const erro = corpo.nome.length < 2 ? 'Informe seu nome.' : corpo.telefone.replace(/\D/g, '').length < 10 ? 'Informe seu WhatsApp com DDD.' : !cpfValido(corpo.cpf) ? 'CPF inválido. Confira os números.' : '';
+    Object.assign(corpo, { nome: $('#l-nome').value.trim(), telefone: $('#l-tel').value.trim(), cpf: $('#l-cpf').value, termos: $('#l-termos').checked });
+    const erro = corpo.nome.length < 2 ? 'Informe seu nome.' : corpo.telefone.replace(/\D/g, '').length < 10 ? 'Informe seu WhatsApp com DDD.' : !cpfValido(corpo.cpf) ? 'CPF inválido. Confira os números.' : !corpo.termos ? 'Para criar a conta, aceite os Termos de uso e o Aviso de privacidade.' : '';
     if (erro){ m.hidden = false; m.textContent = erro; return; }
   }
   b.disabled = true; b.textContent = modo === 'criar' ? 'Criando…' : 'Entrando…';
@@ -522,6 +589,7 @@ document.addEventListener('change', e => {
   if (t.id === 'bairro'){ S.checkout.bairro = t.value; salvar(); render(); }
   if (t.id === 'ag-dia'){ S.checkout.agDia = t.value; S.checkout.agEm = ''; render(); }
   if (t.id === 'ag-hora'){ S.checkout.agEm = t.value; }
+  if (t.id === 'lembrar'){ S.checkout.lembrar = t.checked; salvar(); }
 });
 function mostrarSugest(v){
   const box = $('#sugest'), q = norm(v.trim());
@@ -529,7 +597,7 @@ function mostrarSugest(v){
   const cs = categorias().filter(c => norm(c).includes(q)).slice(0, 2);
   const ps = P.filter(p => norm(p.nome + ' ' + p.descricao).includes(q)).slice(0, 6);
   box.innerHTML = (cs.map(c => '<button data-sug="cat" data-v="' + esc(c) + '"><span class="ph" aria-hidden="true">' + esc(c[0]) + '</span><span><strong>' + esc(c) + '</strong><small>Categoria</small></span></button>').join('') +
-    ps.map(p => '<button data-sug="' + p.id + '">' + foto(p.fotoUrl, '', '', p.nome[0]) + '<span><strong>' + esc(p.nome) + '</strong><small>' + esc(p.categoria) + ' · ' + brl(p.preco) + '</small></span></button>').join('')) || '<div class="vazio">Nada encontrado para “' + esc(v) + '”.</div>';
+    ps.map(p => '<button data-sug="' + p.id + '">' + foto(p.fotoUrl, '', '', p.nome[0]) + '<span><strong>' + esc(p.nome) + '</strong><small>' + esc(p.categoria) + ' · ' + brl(Opcoes.aPartir(p)) + '</small></span></button>').join('')) || '<div class="vazio">Nada encontrado para “' + esc(v) + '”.</div>';
   box.hidden = false;
 }
 document.addEventListener('keydown', e => { if (e.key === 'Enter' && e.target.id === 'end' && modoDist() && R.buscaEndereco){ e.preventDefault(); buscarEndereco(); } });
@@ -561,9 +629,11 @@ window.addEventListener('hashchange', () => { lerHash(); fechar(); if (S.rota ==
   } catch (e) { $('#app').innerHTML = '<div class="vazio-g"><strong>' + (e.status === 404 ? 'Restaurante não encontrado' : 'Não foi possível carregar o cardápio') + '</strong>' + esc(e.message) + '<div style="margin-top:14px"><button class="btn" data-act="recarregar">Tentar de novo</button></div></div>'; return; }
   document.title = R.nome + ' · Cardápio e pedidos';
   $('#marca').textContent = R.nome; $('#rodape').textContent = R.nome + (R.frase ? ' · ' + R.frase : '');
+  $('#lk-termos').href = '/termos?r=' + encodeURIComponent(SLUG); $('#lk-priv').href = '/privacidade?r=' + encodeURIComponent(SLUG);
   if (R.logoUrl){ $('#marca-logo').innerHTML = '<img src="' + esc(R.logoUrl) + '" alt="">'; }
   corDaMarca(R.cor);
   lerHash();
+  await restaurarCarrinho();
   if (S.token){ try { S.user = (await api('GET', '/api/clientes/eu')).cliente; salvar(); } catch (e) {} }
   conectarTempoReal();
   if (S.rota === 'pedidos') carregarPedidos();

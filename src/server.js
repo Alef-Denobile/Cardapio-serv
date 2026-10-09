@@ -17,31 +17,41 @@ app.use(helmet({
       'style-src': ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com'],
       'font-src': ["'self'", 'https://fonts.gstatic.com'],
       'img-src': ["'self'", 'data:', 'https:'],
-      'connect-src': ["'self'", 'ws:', 'wss:']
+      'connect-src': ["'self'", 'ws:', 'wss:'],
+      // fora da produção não força https (para testar pelo celular na rede local)
+      'upgrade-insecure-requests': config.producao ? [] : null
     }
   }
 }));
-app.use(express.json({ limit: '100kb' }));
+// a importação de cardápio (lista grande) lê o corpo só depois do login de dev (veja src/routes/admin.js)
+const jsonPadrao = express.json({ limit: '100kb' });
+app.use((req, res, next) => /^\/api\/admin\/restaurantes\/[^/]+\/importar(\/ifood)?$/.test(req.path) ? next() : jsonPadrao(req, res, next));
 
 app.get('/api/saude', (req, res) => res.json({ ok: true }));
 app.use('/api', require('./routes/publico'));
 app.use('/api/auth', require('./routes/auth'));
+app.use('/api/senha', require('./routes/senha'));
 app.use('/api/painel', require('./routes/painel'));
 app.use('/api/painel', require('./routes/relatorios'));
 app.use('/api/painel', require('./routes/estoque'));
 app.use('/api/admin', require('./routes/admin'));
 if (config.clienteContas) app.use('/api/clientes', require('./routes/clientes').router);
 app.use('/api/pagamentos', require('./routes/pagamentos').router);
+app.use('/api/pix', require('./routes/pix').router);
+app.use('/api/faturas', require('./routes/faturas'));
 app.get('/api/suporte', (req, res) => res.json({ whatsapp: config.suporteWhatsapp, email: config.suporteEmail }));
 app.use('/api', (req, res) => res.status(404).json({ erro: 'Endereço da API não encontrado.' }));
 
 // Fotos enviadas pelo painel e cupom de demonstração da NFC-e
 app.use(require('./routes/arquivos'));
+app.use(require('./routes/legal')); // /termos e /privacidade
 // Mapa (Leaflet) servido pelo próprio servidor, sem depender de CDN
 app.use('/vendor/leaflet', express.static(path.join(path.dirname(require.resolve('leaflet/package.json')), 'dist'), { maxAge: config.producao ? '7d' : 0 }));
 
 // Páginas
 const pub = path.join(__dirname, '..', 'public');
+// Domínio próprio do restaurante (função extra): /, /salao, /mesa/N e /totem no endereço dele
+app.use(require('./lib/dominios').middleware());
 // Entrada do site: escolher entre pedir em casa e o menu do salão
 app.get('/', (req, res) => { res.set('Cache-Control', 'no-cache'); res.sendFile(path.join(pub, 'inicio.html')); });
 // Telas (html, js, css): o navegador sempre confere se há versão nova (atualização aparece na hora depois do deploy).
@@ -57,6 +67,8 @@ app.get('/r/:slug/salao', (req, res) => res.sendFile(path.join(pub, 'salao.html'
 app.get('/r/:slug/totem', (req, res) => { res.set('X-Robots-Tag', 'noindex'); res.sendFile(path.join(pub, 'totem.html')); });
 app.get('/pagar/:id', (req, res) => { res.set('X-Robots-Tag', 'noindex'); res.sendFile(path.join(pub, 'pagar.html')); });
 app.get('/painel', (req, res) => res.sendFile(path.join(pub, 'painel.html')));
+app.get('/fatura/:id', (req, res) => { res.set({ 'X-Robots-Tag': 'noindex', 'Referrer-Policy': 'no-referrer', 'Cache-Control': 'no-store' }); res.sendFile(path.join(pub, 'fatura.html')); });
+app.get('/redefinir-senha', (req, res) => { res.set({ 'X-Robots-Tag': 'noindex', 'Referrer-Policy': 'no-referrer', 'Cache-Control': 'no-store' }); res.sendFile(path.join(pub, 'redefinir-senha.html')); });
 app.get('/admin', (req, res) => { res.set('X-Robots-Tag', 'noindex, nofollow'); res.sendFile(path.join(pub, 'admin.html')); });
 
 // Erros
@@ -68,8 +80,10 @@ app.use((err, req, res, next) => {
   if (['23514', '23502', '22P02', '22001', '23503'].includes(err.code)) return res.status(400).json({ erro: 'Dados inválidos: confira os campos e tente de novo.' });
   if (err.code === '42501') { console.error('Bloqueio do Row Level Security:', err.message); return res.status(403).json({ erro: 'Acesso negado.' }); }
   const status = err.status || 500;
-  if (status >= 500) console.error(err);
-  res.status(status).json({ erro: status >= 500 ? 'Erro no servidor. Tente de novo em instantes.' : err.message });
+  if (status >= 500 && !(err instanceof require('./lib/util').ErroApp)) console.error(err);
+  // mensagens escritas para a pessoa (ErroApp) aparecem mesmo quando o problema é de um serviço de fora (502/503)
+  const nossa = err instanceof require('./lib/util').ErroApp;
+  res.status(status).json(Object.assign({ erro: status >= 500 && !nossa ? 'Erro no servidor. Tente de novo em instantes.' : err.message }, nossa && err.extra ? err.extra : {}));
 });
 
 async function iniciar() {
@@ -77,6 +91,9 @@ async function iniciar() {
   const servidor = http.createServer(app);
   realtime.iniciar(servidor);
   require('./routes/pagamentos').iniciarLimpeza();
+  require('./routes/pix').iniciarConferencia(); // Pix automático: confere os pendentes a cada 20 s
+  require('./lib/carrinho').iniciar(); // lembrete de carrinho no WhatsApp (função extra)
+  require('./lib/cobranca').iniciar(); // mensalidade: gera faturas, suspende e reativa (a cada hora)
   servidor.listen(config.porta, () => console.log(`Servidor no ar em http://localhost:${config.porta}`));
 }
 

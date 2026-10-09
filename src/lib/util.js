@@ -116,4 +116,13 @@ function distanciaKm(a, b) {
 }
 const coordValida = (lat, lng) => Number.isFinite(lat) && Number.isFinite(lng) && Math.abs(lat) <= 90 && Math.abs(lng) <= 180 && !(lat === 0 && lng === 0);
 
-module.exports = { cnpjValido, partesLocais, localParaData, horariosAgendamento, distanciaKm, coordValida, cpfValido, soDigitos, mascararCpf, uuidValido, ErroApp, rota, texto, numero, centavos, tokenAleatorio, iguais, estaAberto, inicioDoDia, minutosLocais, pedidoParaCliente };
+// Endereço público do site para montar links (e-mails, webhooks). Sem PUBLIC_URL, só confia no Host fora da produção.
+function urlBase(req) {
+  const config = require('../config');
+  if (config.urlPublica) return config.urlPublica;
+  if (!config.producao && req) return req.protocol + '://' + req.get('host');
+  return '';
+}
+const hashToken = t => crypto.createHash('sha256').update(String(t)).digest('hex');
+
+module.exports = { urlBase, hashToken, cnpjValido, partesLocais, localParaData, horariosAgendamento, distanciaKm, coordValida, cpfValido, soDigitos, mascararCpf, uuidValido, ErroApp, rota, texto, numero, centavos, tokenAleatorio, iguais, estaAberto, inicioDoDia, minutosLocais, pedidoParaCliente };
