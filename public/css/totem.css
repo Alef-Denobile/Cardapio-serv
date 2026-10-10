@@ -53,7 +53,7 @@ button:disabled{ opacity:.45; cursor:default; }
 .tt-cats button[aria-pressed="true"]{ background:color-mix(in srgb, var(--cor) 14%, var(--papel)); color:var(--cor); }
 .tt-ci{ width:50px; height:50px; border-radius:50%; object-fit:cover; flex:0 0 auto; font-size:20px; }
 .tt-cats button span{ min-width:0; overflow-wrap:break-word; hyphens:auto; }
-.tt-lista{ padding:22px 26px 130px; overflow-y:auto; min-width:0; }
+.tt-lista{ padding:22px 26px 130px; overflow-y:auto; overflow-x:hidden; min-width:0; }
 .tt-lista h2{ font-size:30px; margin:2px 0 16px; display:flex; align-items:baseline; gap:10px; }
 .tt-lista h2 small{ font-size:16px; color:var(--suave); font-weight:700; }
 .tt-grid{ display:flex; flex-direction:column; gap:14px; max-width:1040px; }
@@ -62,7 +62,7 @@ button:disabled{ opacity:.45; cursor:default; }
 .tt-ver{ display:grid; grid-template-columns:160px minmax(0,1fr); gap:20px; align-items:center; border:0; background:transparent; text-align:left; padding:0; border-radius:12px; min-width:0; }
 .tt-foto{ width:160px; height:128px; border-radius:12px; object-fit:cover; font-size:40px; }
 .tt-txt{ display:flex; flex-direction:column; gap:6px; min-width:0; }
-.tt-txt strong{ font-size:22px; line-height:1.2; }
+.tt-txt strong{ font-size:22px; line-height:1.2; overflow-wrap:anywhere; }
 .tt-txt small{ color:var(--suave); font-size:16px; line-height:1.4; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
 .tt-selos{ display:flex; flex-wrap:wrap; gap:4px; }
 .tt-selos i{ font-style:normal; font-size:13px; font-weight:800; color:var(--ok); background:var(--ok-bg); border-radius:999px; padding:2px 9px; }
@@ -167,3 +167,40 @@ button:disabled{ opacity:.45; cursor:default; }
   .tt-barra .tt-pri{ padding:16px 20px; font-size:18px; }
 }
 .tt-legal{margin:22px 0 0;font-size:15px;color:var(--suave);text-align:center;line-height:1.4}
+
+/* celular (para testar o totem no telefone): tudo cabe na largura, nada sai da tela */
+@media (max-width: 560px){
+  html{ -webkit-text-size-adjust:100%; text-size-adjust:100%; }
+  .tt-corpo{ grid-template-columns:92px minmax(0,1fr); }
+  .tt-cats{ padding:8px 2px; }
+  .tt-cats button{ padding:8px 0; font-size:10.5px; letter-spacing:-.2px; }
+  .tt-ci{ width:50px; height:50px; }
+  .tt-lista{ padding:14px 10px 120px; }
+  .tt-lista h2{ font-size:24px; flex-wrap:wrap; gap:4px 8px; }
+  .tt-item{ padding:12px; gap:10px; }
+  .tt-ver{ grid-template-columns:1fr; gap:10px; }
+  .tt-foto{ width:100%; height:auto; aspect-ratio:16/9; font-size:28px; }
+  .tt-txt strong{ overflow-wrap:break-word; }
+  .tt-cats button span{ overflow-wrap:normal; word-break:normal; }
+  .tt-txt strong{ font-size:17px; }
+  .tt-txt small{ font-size:13.5px; }
+  .tt-lado{ flex-wrap:wrap; gap:8px; }
+  .tt-lado b{ font-size:19px; }
+  .tt-add{ min-height:50px; padding:0 16px; font-size:17px; flex:1 1 auto; justify-content:center; max-width:100%; }
+  .tt-add > span:first-child{ font-size:24px; }
+  /* barras de cima e de baixo mais baixas no celular */
+  .tt-topo{ height:58px; padding:0 10px; gap:8px; }
+  .tt-marca{ gap:8px; }
+  .tt-marca strong{ font-size:16px; } .tt-marca span{ font-size:11.5px; }
+  .tt-mlogo{ width:34px; height:34px; border-radius:10px; }
+  .tt-mlogo.mono{ font-size:14px; }
+  .tt-bt{ padding:6px 12px; min-height:36px; font-size:13.5px; border-width:1.5px; }
+  .tt-cats{ top:58px; }
+  .tt-barra{ height:66px; gap:10px; padding:0 10px env(safe-area-inset-bottom); }
+  .tt-barra span{ font-size:19px; }
+  .tt-barra strong{ font-size:12px; line-height:1.2; }
+  .tt-barra div{ min-width:0; }
+  .tt-barra .tt-pri{ padding:10px 14px; font-size:14.5px; min-height:46px; }
+  .tt-cats{ height:calc(100dvh - 58px - 66px); }
+  .tt-lista{ padding-bottom:96px; }
+}
