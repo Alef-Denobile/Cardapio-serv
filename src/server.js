@@ -59,6 +59,8 @@ app.get('/', (req, res) => { res.set('Cache-Control', 'no-cache'); res.sendFile(
 app.use(express.static(pub, { extensions: ['html'], maxAge: config.producao ? '1h' : 0,
   setHeaders: (res, arq) => { if (/\.(html|js|css)$/.test(arq)) res.setHeader('Cache-Control', 'no-cache'); } }));
 // Site do restaurante (cardápio, entrega e retirada) e, pelo QR Code, o pedido na mesa
+// página de divulgação da plataforma (para mandar aos donos de restaurante)
+app.get(['/conheca', '/conheca/'], (req, res) => { res.set('Cache-Control', 'no-cache'); res.sendFile(path.join(pub, 'conheca.html')); });
 app.get('/r/:slug', (req, res) => res.sendFile(path.join(pub, 'index.html')));
 // Cardápio do salão (quem já está no restaurante): pela mesa (QR da mesa) ou só para ver (/salao)
 app.get('/r/:slug/mesa/:numero', (req, res) => res.sendFile(path.join(pub, 'salao.html')));

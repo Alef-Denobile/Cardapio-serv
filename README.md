@@ -106,6 +106,10 @@ Quando tiverem clientes, use **New > Blueprint** com o caminho `render-pago.yaml
 
 Registre o domínio (por exemplo no Registro.br) e, no Render, em **Settings > Custom Domains**, siga as instruções. O HTTPS é automático.
 
+## Página de divulgação (`/conheca`)
+
+Página para mandar aos donos de restaurante: explica o que o sistema faz, tem as 3 demonstrações funcionando dentro de um celular na tela e o botão "Fale conosco" que abre o WhatsApp (15) 98805-3447 com uma mensagem pronta. Endereço: `https://cardapio-serv.onrender.com/conheca`. Para trocar o nome, o número ou os textos: `public/conheca.html` e `public/js/conheca.js`.
+
 ## Cadastrar um novo restaurante
 
 Restaurante não se cadastra sozinho: quem cadastra é a equipe de vocês, pela área de devs (`/admin` → **Novo restaurante**) ou pelo comando abaixo.
