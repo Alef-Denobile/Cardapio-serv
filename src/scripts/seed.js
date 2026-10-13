@@ -1,11 +1,12 @@
-// Cria o restaurante de demonstração "Sabor da Casa" (cardápio com fotos, mesas e equipe) e o primeiro acesso de dev.
-// Uso: npm run seed                              (não mexe em nada se o exemplo já existir)
+// Cria as 3 demonstrações (lanchonete Sabor da Casa, sorveteria Gelato & Cia e restaurante Cantina Bella) e o primeiro acesso de dev.
+// Uso: npm run seed                              (cria só as demonstrações que ainda não existem; não mexe nas outras)
 //      npm run seed -- --com-historico           (inclui 30 dias de pedidos e avaliações de exemplo, para demonstrações)
-//      npm run seed -- --reset --com-historico   (apaga e recria SOMENTE o restaurante de exemplo)
+//      npm run seed -- --reset --com-historico   (apaga e recria SOMENTE as 3 demonstrações)
 const bcrypt = require('bcryptjs');
 const { conectar, sistema, encerrar } = require('../db');
 const config = require('../config');
-const { criarDemo, SLUG, SENHA, EMAILS } = require('../lib/demo');
+const { criarDemos } = require('../lib/demo');
+const { TIPOS } = require('../lib/tipos');
 
 (async () => {
   try {
@@ -13,14 +14,15 @@ const { criarDemo, SLUG, SENHA, EMAILS } = require('../lib/demo');
     const msg = await sistema(async c => {
       const base = config.urlPublica || `http://localhost:${config.porta}`;
       const linhas = [''];
-      const r = await criarDemo(c, { reset: process.argv.includes('--reset'), historico: process.argv.includes('--com-historico') });
-      if (!r) linhas.push('O restaurante de exemplo já existe. Use "npm run seed -- --reset" para recriá-lo.');
-      else {
-        const mesa1 = (await c.query('SELECT token FROM mesas WHERE restaurante_id = $1 AND numero = 1', [r.rest.id])).rows[0];
-        linhas.push('Restaurante de exemplo pronto: Sabor da Casa',
-          `  Site do restaurante: ${base}/  (também em ${base}/r/${SLUG})`, `  Exemplo de QR da Mesa 1: ${base}/r/${SLUG}/mesa/1?t=${mesa1.token}`, `  Painel: ${base}/painel`,
-          `  Logins (senha ${SENHA}): ${EMAILS.dono} · ${EMAILS.cozinha} · ${EMAILS.carlos}`);
-        if (r.nHist) linhas.push(`  ${r.nHist} pedidos de exemplo dos últimos 30 dias e ${r.nAv} avaliações (para o histórico, o balanço e o mapa das mesas).`);
+      const feitos = await criarDemos(c, { reset: process.argv.includes('--reset'), historico: process.argv.includes('--com-historico') });
+      if (!feitos.length) linhas.push('As demonstrações já existem. Use "npm run seed -- --reset --com-historico" para recriá-las.');
+      for (const r of feitos) {
+        const d = r.demo, mesa1 = (await c.query('SELECT token FROM mesas WHERE restaurante_id = $1 AND numero = 1', [r.rest.id])).rows[0];
+        linhas.push(`Demonstração pronta: ${d.nome} (${TIPOS[d.tipo].nome.toLowerCase()})`, `  Site: ${base}/r/${d.slug}`);
+        if (mesa1) linhas.push(`  QR da Mesa 1: ${base}/r/${d.slug}/mesa/1?t=${mesa1.token}`);
+        linhas.push(`  Painel: ${base}/painel  (senha ${d.senha}): ${[d.emails.dono, d.emails.cozinha].concat(d.emails.entregadores.map(e => e[1])).join(' · ')}`);
+        if (r.nHist) linhas.push(`  ${r.nHist} pedidos de exemplo dos últimos 30 dias e ${r.nAv} avaliações.`);
+        linhas.push('');
       }
       if (!(await c.query('SELECT 1 FROM admins LIMIT 1')).rowCount) {
         // Primeiro acesso de dev: ADMIN_INICIAL_EMAIL e ADMIN_INICIAL_SENHA (útil no plano gratuito do Render, que não tem Shell)
@@ -34,7 +36,7 @@ const { criarDemo, SLUG, SENHA, EMAILS } = require('../lib/demo');
           linhas.push(`  Área de devs: ${base}/admin  (dev@cardapio.dev / devs-troque-esta-senha — crie a sua conta com "npm run novo-admin" e desative esta)`);
         }
       }
-      if (r) linhas.push('  Troque essas senhas antes de usar com clientes reais.');
+      if (feitos.length) linhas.push('  Troque essas senhas antes de usar com clientes reais.');
       linhas.push('');
       return linhas.join('\n');
     });

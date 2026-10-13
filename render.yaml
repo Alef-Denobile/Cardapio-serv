@@ -8,7 +8,7 @@ services:
     plan: free
     region: virginia
     # O plano gratuito não tem Shell: o exemplo de demonstração e o primeiro acesso de dev são criados no build.
-    # Se já existirem, o seed não mexe em nada.
+    # O seed só cria as demonstrações que ainda não existem; as que já existem ficam como estão.
     buildCommand: npm install && npm run seed -- --com-historico
     startCommand: npm start
     healthCheckPath: /api/saude

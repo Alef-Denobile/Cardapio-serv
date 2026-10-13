@@ -45,7 +45,7 @@ r.get('/r/:slug', rota(async (req, res) => {
   const nomeCurto = n => { const p = String(n || 'Cliente').trim().split(/\s+/); return p[0] + (p[1] ? ' ' + p[1][0] + '.' : ''); };
   res.json({
     restaurante: {
-      nome: rest.nome, slug: rest.slug, frase: rest.frase, cor: rest.cor, logoUrl: rest.logoUrl, abre: rest.abre, fecha: rest.fecha,
+      nome: rest.nome, slug: rest.slug, estabelecimento: rest.tipo, frase: rest.frase, cor: rest.cor, logoUrl: rest.logoUrl, abre: rest.abre, fecha: rest.fecha,
       aberto: estaAberto(rest), aceitarForaDoHorario: rest.aceitarForaDoHorario, taxaServico: rest.taxaServico, chavePix: rest.chavePix, whatsapp: rest.whatsapp,
       delivery: Object.assign({}, rest.delivery, { local: coordValida(rest.delivery.local.lat, rest.delivery.local.lng) ? { lat: rest.delivery.local.lat, lng: rest.delivery.local.lng } : null }),
       agendamento: { ativo: !!rest.agendamento.ativo, dias: horariosAgendamento(rest) }, buscaEndereco: config.buscaEndereco, categorias: cats, recursos: recursosDe(rest), tipos: tiposPermitidos(rest), capaUrl: rest.capaUrl, sobre: rest.sobre,

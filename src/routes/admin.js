@@ -10,6 +10,7 @@ const { assinarAdmin, exigirAdmin } = require('../middleware/admin');
 const { criarRestaurante } = require('../lib/criarRestaurante');
 const { limparProduto, limparConfig } = require('../lib/dados');
 const { RECURSOS, recursosDe } = require('../lib/recursos');
+const tipos = require('../lib/tipos');
 const { ErroApp, rota, texto, numero, centavos, uuidValido, tokenAleatorio, urlBase } = require('../lib/util');
 const cobranca = require('../lib/cobranca');
 
@@ -39,7 +40,7 @@ r.post('/login', limiteLogin, rota(async (req, res) => {
   res.json({ token: assinarAdmin(a), admin: { id: a.id, nome: a.nome, email: a.email } });
 }));
 r.use(exigirAdmin);
-r.get('/eu', (req, res) => res.json({ admin: { id: req.admin.id, nome: req.admin.nome, email: req.admin.email }, recursos: RECURSOS }));
+r.get('/eu', (req, res) => res.json({ admin: { id: req.admin.id, nome: req.admin.nome, email: req.admin.email }, recursos: RECURSOS, tipos: tipos.lista() }));
 
 /* ---------- restaurantes ---------- */
 r.get('/restaurantes', rota(async (req, res) => {
@@ -52,7 +53,7 @@ r.get('/restaurantes', rota(async (req, res) => {
       (SELECT coalesce(sum(total), 0) FROM pedidos p WHERE p.restaurante_id = r.id AND p.status NOT IN ('cancelado', 'aguardando') AND p.criado_em >= now() - interval '30 days') AS fat_30,
       (SELECT max(criado_em) FROM pedidos p WHERE p.restaurante_id = r.id AND p.criado_em >= now() - interval '30 days') AS ultimo
     FROM restaurantes r ORDER BY r.nome`)).rows);
-  res.json({ restaurantes: lista.map(x => { const o = repo.restObj(x, []); return { id: o.id, nome: o.nome, slug: o.slug, cor: o.cor, ativo: o.ativo, plano: o.plano, recursos: o.recursos, criadoEm: o.createdAt,
+  res.json({ restaurantes: lista.map(x => { const o = repo.restObj(x, []); return { id: o.id, nome: o.nome, slug: o.slug, cor: o.cor, ativo: o.ativo, plano: o.plano, tipo: o.tipo, recursos: o.recursos, criadoEm: o.createdAt,
     suspensoCobranca: o.suspensoCobranca, mensalidade: o.cobranca.ativa ? o.cobranca.valor : 0, produtos: x.n_produtos, equipe: x.n_equipe, pedidosHoje: x.pedidos_hoje, pedidos30: x.pedidos_30, faturamento30: centavos(x.fat_30), ultimoPedido: x.ultimo }; }) });
 }));
 
@@ -61,10 +62,13 @@ r.post('/restaurantes', rota(async (req, res) => {
   const slug = texto(b.slug, 60).toLowerCase();
   if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug)) throw new ErroApp(400, 'O endereço deve ter só letras minúsculas, números e hífens. Ex.: pizzaria-do-ze');
   if (!/^\S+@\S+\.\S+$/.test(texto(b.email, 120))) throw new ErroApp(400, 'Informe um e-mail válido para o dono.');
+  if (b.tipo != null && b.tipo !== '' && !tipos.valido(b.tipo)) throw new ErroApp(400, 'Escolha o tipo: lanchonete, sorveteria ou restaurante.');
+  const tipo = tipos.tipoDe(b.tipo), pre = tipos.TIPOS[tipo];
   const rest = await sis(async c => {
     try {
-      const { rest } = await criarRestaurante(c, { nome: texto(b.nome, 80), slug, email: texto(b.email, 120), senha: String(b.senha || ''), nomeDono: texto(b.donoNome, 60) || 'Dono', mesas: Math.min(200, Math.max(0, Math.trunc(numero(b.mesas, 10)))), extras: { plano: texto(b.plano, 40) || 'Básico' } });
-      await registrar(c, req, rest, 'Restaurante criado', 'Dono: ' + texto(b.email, 120).toLowerCase());
+      const { rest } = await criarRestaurante(c, { nome: texto(b.nome, 80), slug, email: texto(b.email, 120), senha: String(b.senha || ''), nomeDono: texto(b.donoNome, 60) || 'Dono', tipo,
+        mesas: Math.min(200, Math.max(0, Math.trunc(numero(b.mesas, pre.mesas)))), extras: { plano: texto(b.plano, 40) || 'Básico' } });
+      await registrar(c, req, rest, 'Restaurante criado', pre.nome + ' · Dono: ' + texto(b.email, 120).toLowerCase());
       return rest;
     } catch (e) { if (e instanceof ErroApp) throw e; throw new ErroApp(400, e.message); }
   });
@@ -92,6 +96,12 @@ r.patch('/restaurantes/:id/situacao', rota(async (req, res) => {
       mud.push(b.ativo ? 'Restaurante reativado' : 'Restaurante suspenso' + (motivo ? ' (' + motivo + ')' : ''));
     }
     if ('plano' in b && texto(b.plano, 40) !== rest.plano){ await c.query('UPDATE restaurantes SET plano = $2 WHERE id = $1', [rest.id, texto(b.plano, 40)]); mud.push('Plano: ' + rest.plano + ' → ' + texto(b.plano, 40)); }
+    if ('tipo' in b && b.tipo !== rest.tipo){
+      if (!tipos.valido(b.tipo)) throw new ErroApp(400, 'Tipo inválido.');
+      // só muda o rótulo: funções, categorias e cardápio continuam como estão (a não ser que peça para aplicar as funções)
+      await c.query('UPDATE restaurantes SET tipo = $2 WHERE id = $1', [rest.id, b.tipo]); mud.push('Tipo: ' + tipos.TIPOS[rest.tipo].nome + ' → ' + tipos.TIPOS[b.tipo].nome);
+    }
+    if (b.aplicarFuncoes === true){ const t = tipos.valido(b.tipo) ? b.tipo : rest.tipo; await tipos.aplicarFuncoes(c, rest.id, t); mud.push('Funções do tipo ' + tipos.TIPOS[t].nome + ' aplicadas'); }
     if ('observacoes' in b && texto(b.observacoes, 2000) !== rest.observacoes){ await c.query('UPDATE restaurantes SET observacoes = $2 WHERE id = $1', [rest.id, texto(b.observacoes, 2000)]); mud.push('Observações internas atualizadas'); }
     if (mud.length) await registrar(c, req, rest, 'Situação alterada', mud.join(' · '));
   });

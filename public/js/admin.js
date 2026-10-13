@@ -33,12 +33,12 @@ const quando = t => { const d = new Date(t); return d.toLocaleDateString('pt-BR'
 /* ---------- login ---------- */
 async function iniciar(){
   if (!S.token) return mostrarLogin();
-  try { const d = await chamar('GET', '/api/admin/eu'); S.eu = d.admin; S.recursos = d.recursos; entrar(); } catch (e) { if (e.status !== 401) mostrarLogin(e.message); }
+  try { const d = await chamar('GET', '/api/admin/eu'); S.eu = d.admin; S.recursos = d.recursos; S.tipos = d.tipos || []; entrar(); } catch (e) { if (e.status !== 401) mostrarLogin(e.message); }
 }
 function mostrarLogin(msg){ $('#v-login').hidden = false; $('#v-app').hidden = true; if (msg){ $('#l-erro').hidden = false; $('#l-erro').textContent = msg; } setTimeout(() => $('#l-email').focus(), 50); }
 $('#f-login').addEventListener('submit', async e => {
   e.preventDefault(); const b = $('#l-btn'); $('#l-erro').hidden = true; b.disabled = true; b.textContent = 'Entrando…';
-  try { const d = await api('POST', '/api/admin/login', { email: $('#l-email').value, senha: $('#l-senha').value }); S.token = d.token; guardar.gravar('admin:token', d.token); $('#l-senha').value = ''; const eu = await chamar('GET', '/api/admin/eu'); S.eu = eu.admin; S.recursos = eu.recursos; entrar(); }
+  try { const d = await api('POST', '/api/admin/login', { email: $('#l-email').value, senha: $('#l-senha').value }); S.token = d.token; guardar.gravar('admin:token', d.token); $('#l-senha').value = ''; const eu = await chamar('GET', '/api/admin/eu'); S.eu = eu.admin; S.recursos = eu.recursos; S.tipos = eu.tipos || []; entrar(); }
   catch (err) { $('#l-erro').hidden = false; $('#l-erro').textContent = err.message; }
   b.disabled = false; b.textContent = 'Entrar';
 });
@@ -60,18 +60,25 @@ async function renderLista(){
   try { S.lista = (await chamar('GET', '/api/admin/restaurantes')).restaurantes; } catch (e) { $('#pane').innerHTML = '<p class="erro">' + esc(e.message) + '</p>'; return; }
   desenharLista();
 }
+const nomeTipo = id => ((S.tipos || []).find(t => t.id === id) || {}).nome || 'Restaurante';
+const NOME_REC = k => (S.recursos[k] || k).replace(/ \(.*\)/, '');
+function infoTipo(t){ return t ? 'Já liga: ' + esc(t.ligar.map(NOME_REC).join(', ')) + '. Categorias iniciais: ' + esc(t.categorias.join(', ')) + '. Depois dá para mudar tudo.' : ''; }
 function desenharLista(){
   const l = S.lista, at = l.filter(x => x.ativo).length;
   const kpi = '<div class="kpis"><div class="kpi"><span>Restaurantes</span><strong>' + l.length + '</strong></div><div class="kpi"><span>Ativos</span><strong>' + at + '</strong></div><div class="kpi"><span>Suspensos</span><strong>' + (l.length - at) + '</strong></div><div class="kpi"><span>Pedidos hoje (todos)</span><strong>' + l.reduce((a, x) => a + x.pedidosHoje, 0) + '</strong></div></div>';
-  const form = S.novo ? '<h3>Novo restaurante</h3><form id="f-novo" class="card" novalidate><div class="grid2"><div><label for="n-nome">Nome do restaurante</label><input id="n-nome" placeholder="Pizzaria do Zé"></div><div><label for="n-slug">Endereço (slug)</label><input id="n-slug" placeholder="pizzaria-do-ze"></div>' +
+  const T = S.tipos || [], t0 = T.find(t => t.id === 'restaurante') || T[0];
+  const form = S.novo ? '<h3>Novo restaurante</h3><form id="f-novo" class="card" novalidate>' +
+    (T.length ? '<label>Tipo do estabelecimento</label><div class="tipos" role="radiogroup" aria-label="Tipo do estabelecimento">' + T.map(t => '<label class="tipo-op" for="n-tipo-' + t.id + '"><input type="radio" name="n-tipo" id="n-tipo-' + t.id + '" value="' + t.id + '"' + (t === t0 ? ' checked' : '') + '><strong>' + esc(t.nome) + '</strong><small>' + esc(t.descricao) + '</small></label>').join('') + '</div>' +
+      '<p class="note" id="n-tipo-info">' + infoTipo(t0) + '</p>' : '') +
+    '<div class="grid2"><div><label for="n-nome">Nome do restaurante</label><input id="n-nome" placeholder="Pizzaria do Zé"></div><div><label for="n-slug">Endereço (slug)</label><input id="n-slug" placeholder="pizzaria-do-ze"></div>' +
     '<div><label for="n-dono">Nome do dono</label><input id="n-dono" placeholder="José"></div><div><label for="n-email">E-mail do dono</label><input id="n-email" type="email" autocomplete="off"></div><div><label for="n-senha">Senha inicial do dono (mín. 8)</label><input id="n-senha" type="text" autocomplete="new-password"></div>' +
-    '<div><label for="n-mesas">Mesas</label><input id="n-mesas" type="number" min="0" max="200" value="10"></div><div><label for="n-plano">Plano</label><input id="n-plano" value="Básico"></div></div>' +
+    '<div><label for="n-mesas">Mesas</label><input id="n-mesas" type="number" min="0" max="200" value="' + (t0 ? t0.mesas : 10) + '"></div><div><label for="n-plano">Plano</label><input id="n-plano" value="Básico"></div></div>' +
     '<p class="note">O dono entra em /painel com esse e-mail e senha. Peça para ele trocar a senha no primeiro acesso.</p><div class="row"><button class="btn" type="submit">Criar restaurante</button><button class="btn ghost" type="button" data-act="cancelar-novo">Cancelar</button></div></form>' : '';
   const q = C.norm(S.q);
-  const vis = l.filter(x => !q || C.norm(x.nome + ' ' + x.slug + ' ' + x.plano).includes(q));
-  $('#pane').innerHTML = kpi + form + '<div class="kbar" style="margin-top:16px"><input id="r-q" type="search" placeholder="Buscar restaurante, endereço ou plano" value="' + esc(S.q) + '" style="max-width:340px" aria-label="Buscar restaurante">' + (S.novo ? '' : '<button class="btn sm" data-act="novo">+ Novo restaurante</button>') + '</div>' +
+  const vis = l.filter(x => !q || C.norm(x.nome + ' ' + x.slug + ' ' + x.plano + ' ' + nomeTipo(x.tipo)).includes(q));
+  $('#pane').innerHTML = kpi + form + '<div class="kbar" style="margin-top:16px"><input id="r-q" type="search" placeholder="Buscar restaurante, endereço, tipo ou plano" value="' + esc(S.q) + '" style="max-width:340px" aria-label="Buscar restaurante">' + (S.novo ? '' : '<button class="btn sm" data-act="novo">+ Novo restaurante</button>') + '</div>' +
     '<div class="rlist">' + (vis.map(x => '<div class="rcard"><div class="logo mono" style="background:' + esc(x.cor) + '">' + esc(initials(x.nome)) + '</div><div><h3>' + esc(x.nome) + '<span class="st ' + (x.ativo ? 'on' : 'off') + '">' + (x.ativo ? 'Ativo' : x.suspensoCobranca ? 'Suspenso por atraso' : 'Suspenso') + '</span>' + (x.mensalidade ? '<span class="st on" style="background:none;border:1px solid currentColor">' + brl(x.mensalidade) + '/mês</span>' : '') + '</h3>' +
-      '<div class="meta"><span>/r/' + esc(x.slug) + '</span><span>Plano ' + esc(x.plano || 'não definido') + '</span><span>' + x.produtos + ' produtos</span><span>' + x.equipe + ' acessos</span><span>' + x.pedidosHoje + ' pedidos hoje</span><span>' + brl(x.faturamento30) + ' em 30 dias</span><span>' + (x.ultimoPedido ? 'último pedido ' + quando(x.ultimoPedido) : 'sem pedidos em 30 dias') + '</span></div>' +
+      '<div class="meta"><span class="tipo-tag">' + esc(nomeTipo(x.tipo)) + '</span><span>/r/' + esc(x.slug) + '</span><span>Plano ' + esc(x.plano || 'não definido') + '</span><span>' + x.produtos + ' produtos</span><span>' + x.equipe + ' acessos</span><span>' + x.pedidosHoje + ' pedidos hoje</span><span>' + brl(x.faturamento30) + ' em 30 dias</span><span>' + (x.ultimoPedido ? 'último pedido ' + quando(x.ultimoPedido) : 'sem pedidos em 30 dias') + '</span></div>' +
       '<div class="feat-chips">' + Object.keys(S.recursos).map(k => '<span class="fc' + (x.recursos[k] ? '' : ' off') + '">' + esc(S.recursos[k].replace(/ \(.*\)/, '')) + '</span>').join('') + '</div></div>' +
       '<button class="btn sm" data-act="abrir" data-id="' + x.id + '">Gerenciar</button></div>').join('') || '<p class="note">Nenhum restaurante encontrado.</p>') + '</div>';
 }
@@ -87,7 +94,7 @@ async function renderDetalhe(){
 function desenharDetalhe(){
   const r = S.det.restaurante;
   $('#pane').innerHTML = '<button class="crumb" data-act="voltar">‹ Todos os restaurantes</button>' +
-    '<div class="kh" style="padding-top:8px"><div><div class="table-tag">Plano ' + esc(r.plano || 'não definido') + '</div><h2>' + esc(r.nome) + '<span class="st ' + (r.ativo ? 'on' : 'off') + '">' + (r.ativo ? 'Ativo' : 'Suspenso') + '</span></h2></div>' +
+    '<div class="kh" style="padding-top:8px"><div><div class="table-tag">' + esc(nomeTipo(r.tipo)) + ' · Plano ' + esc(r.plano || 'não definido') + '</div><h2>' + esc(r.nome) + '<span class="st ' + (r.ativo ? 'on' : 'off') + '">' + (r.ativo ? 'Ativo' : 'Suspenso') + '</span></h2></div>' +
     '<div class="row" style="margin:0"><a class="btn sm ghost" href="/r/' + esc(r.slug) + '" target="_blank" rel="noopener">Abrir cardápio</a><button class="btn sm ghost" data-act="copiar" data-v="' + esc(location.origin + '/r/' + r.slug) + '">Copiar link</button></div></div>' +
     '<div class="tabs" role="tablist" style="margin-top:6px">' + SUBS.map(t => '<button role="tab" data-act="sub" data-t="' + t[0] + '" aria-selected="' + (S.sub === t[0]) + '">' + t[1] + '</button>').join('') + '</div><div id="sub" class="pane"></div>';
   ({ funcoes: subFuncoes, catalogo: subCatalogo, dados: subDados, mesas: subMesas, mensalidade: subMensalidade, equipe: subEquipe, pedidos: subPedidos, historico: subHistorico })[S.sub]();
@@ -99,6 +106,8 @@ function subFuncoes(){
     '<p class="note">Funções desligadas aqui somem para o cliente e o dono não consegue religar pelo painel. Pedidos que já estão em andamento continuam normalmente.</p><div class="row"><button class="btn" type="submit">Salvar funções</button></div></form></div>' +
     '<div><h3 style="margin-top:4px">Situação</h3><form id="f-sit" class="card"><label class="tg" for="s-ativo"><span>Restaurante ativo<small>Suspenso, o cardápio mostra "temporariamente indisponível" e ninguém da equipe do restaurante consegue entrar no painel.</small></span><input type="checkbox" class="switch" id="s-ativo"' + (r.ativo ? ' checked' : '') + '></label>' +
     '<label for="s-motivo">Motivo da suspensão (interno)</label><input id="s-motivo" value="' + esc(r.motivoSuspensao) + '" placeholder="Ex.: mensalidade em atraso">' +
+    '<label for="s-tipo">Tipo do estabelecimento</label><select id="s-tipo">' + (S.tipos || []).map(t => '<option value="' + t.id + '"' + (t.id === r.tipo ? ' selected' : '') + '>' + esc(t.nome) + '</option>').join('') + '</select>' +
+    '<div id="s-tipo-ap" hidden><p class="note" id="s-tipo-info"></p><label class="tg" for="s-tipo-fn"><span>Aplicar também as funções do novo tipo<small>Desligado, só muda o tipo. O cardápio e as categorias nunca são alterados.</small></span><input type="checkbox" class="switch" id="s-tipo-fn"></label></div>' +
     '<label for="s-plano">Plano</label><input id="s-plano" value="' + esc(r.plano) + '">' +
     '<label for="s-obs">Observações internas (só a equipe de devs vê)</label><textarea id="s-obs" rows="4" placeholder="Contato, combinados, pendências">' + esc(r.observacoes) + '</textarea>' +
     '<div class="row"><button class="btn" type="submit">Salvar situação</button></div></form></div></div>';
@@ -365,6 +374,8 @@ document.addEventListener('change', async e => {
   if (t.dataset && t.dataset.impOn !== undefined){ S.imp.itens[+t.dataset.impOn].on = t.checked; desenharCatalogo(); return; }
   if (t.dataset && t.dataset.imp){ const [i, k] = t.dataset.imp.split(':'); S.imp.itens[+i][k] = k === 'preco' ? parseFloat(t.value) || 0 : t.value; return; }
   if (t.id === 'tt-imp'){ S.totemImp = t.checked; desenharMesas(); return; }
+  if (t.name === 'n-tipo'){ const tp = (S.tipos || []).find(x => x.id === t.value); if (tp){ $('#n-mesas').value = tp.mesas; $('#n-tipo-info').innerHTML = infoTipo(tp); } return; }
+  if (t.id === 's-tipo'){ const tp = (S.tipos || []).find(x => x.id === t.value), box = $('#s-tipo-ap'); if (box) box.hidden = t.value === S.det.restaurante.tipo; if (tp && $('#s-tipo-info')) $('#s-tipo-info').innerHTML = infoTipo(tp); return; }
   if (t.id === 'p-cat'){ $('#p-novacat-w').hidden = t.value !== '__nova'; return; }
   if (t.dataset.preco){ const p = S.produtos.find(x => x._id === t.dataset.preco); try { const d = await chamar('PATCH', '/api/admin/restaurantes/' + S.sel + '/produtos/' + p._id, { preco: t.value }); Object.assign(p, d.produto); toast('Preço de ' + p.nome + ': ' + brl(p.preco)); } catch (err) { toast(err.message); t.value = p.preco; } }
 });
@@ -373,9 +384,9 @@ document.addEventListener('submit', async e => {
   const v = x => $('#' + x).value;
   try {
     if (id === 'f-prod') return salvarProduto(e);
-    if (id === 'f-novo'){ const d = await chamar('POST', '/api/admin/restaurantes', { nome: v('n-nome'), slug: v('n-slug'), donoNome: v('n-dono'), email: v('n-email'), senha: v('n-senha'), mesas: v('n-mesas'), plano: v('n-plano') }); S.novo = false; toast('Restaurante criado'); S.sel = d.restaurante.id; S.sub = 'funcoes'; renderDetalhe(); }
+    if (id === 'f-novo'){ const d = await chamar('POST', '/api/admin/restaurantes', { tipo: ($('[name="n-tipo"]:checked') || {}).value, nome: v('n-nome'), slug: v('n-slug'), donoNome: v('n-dono'), email: v('n-email'), senha: v('n-senha'), mesas: v('n-mesas'), plano: v('n-plano') }); S.novo = false; toast('Restaurante criado'); S.sel = d.restaurante.id; S.sub = 'funcoes'; renderDetalhe(); }
     if (id === 'f-rec'){ const corpo = {}; $$('[data-rc]').forEach(x => { corpo[x.dataset.rc] = x.checked; }); await chamar('PUT', base + '/recursos', corpo); await carregarDetalhe(); toast('Funções salvas'); desenharDetalhe(); }
-    if (id === 'f-sit'){ await chamar('PATCH', base + '/situacao', { ativo: $('#s-ativo').checked, motivo: v('s-motivo'), plano: v('s-plano'), observacoes: v('s-obs') }); await carregarDetalhe(); toast('Situação salva'); desenharDetalhe(); }
+    if (id === 'f-sit'){ await chamar('PATCH', base + '/situacao', { ativo: $('#s-ativo').checked, motivo: v('s-motivo'), tipo: v('s-tipo'), aplicarFuncoes: !!($('#s-tipo-fn') && $('#s-tipo-fn').checked && v('s-tipo') !== S.det.restaurante.tipo), plano: v('s-plano'), observacoes: v('s-obs') }); await carregarDetalhe(); toast('Situação salva'); desenharDetalhe(); }
     if (id === 'f-config'){ await chamar('PUT', base + '/config', { nome: v('c-nome'), frase: v('c-frase'), cor: v('c-cor'), logoUrl: v('c-logo'), abre: v('c-abre'), fecha: v('c-fecha'), taxaServico: v('c-serv'), whatsapp: v('c-whats'), chavePix: v('c-pix'), aceitarForaDoHorario: $('#c-fora').checked, categorias: v('c-cats').split('\n').map(s => s.trim()).filter(Boolean),
       delivery: { ativo: $('#c-dat').checked, tempo: v('c-tempo'), tempoRetirada: v('c-tret'), pedidoMinimo: v('c-min'), gratisAcimaDe: v('c-gratis'), bairros: escolhas(v('c-bairros'), /\n/).map(x => ({ nome: x.nome, taxa: x.preco })) } }); await carregarDetalhe(); toast('Dados salvos'); desenharDetalhe(); }
     if (id === 'f-user'){ await chamar('POST', base + '/equipe', { nome: v('u-nome'), email: v('u-email'), senha: v('u-senha'), papel: v('u-papel') }); await carregarDetalhe(); toast('Acesso criado'); subEquipe(); }

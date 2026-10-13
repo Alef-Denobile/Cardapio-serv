@@ -12,6 +12,12 @@ const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&a
     document.title = R.nome;
     if (/^#[0-9a-f]{6}$/i.test(R.cor || '')) document.documentElement.style.setProperty('--cor', R.cor);
     if (R.capaUrl) $('#ini').style.setProperty('--capa', 'url("' + R.capaUrl.replace(/"/g, '') + '")');
+    // texto conforme o tipo do estabelecimento (lanchonete, sorveteria ou restaurante) e se tem pedido na mesa
+    const lugar = { lanchonete: 'na lanchonete', sorveteria: 'na sorveteria' }[R.estabelecimento] || 'no restaurante';
+    const temMesa = !!(R.recursos && R.recursos.mesa);
+    $('#op-salao-t').textContent = 'Estou ' + lugar;
+    $('#op-salao-d').textContent = temMesa ? 'Escolha no cardápio e retire no balcão (ou use o QR da mesa)' : 'Veja o cardápio, escolha e peça no balcão';
+    if (!temMesa) $('#ini-dica').hidden = true;
     const tipos = (R.tipos || []).filter(t => t !== 'mesa');
     if (!tipos.length) $('#op-online').hidden = true;
     $('#marca').innerHTML = (R.logoUrl ? '<img class="ini-logo" src="' + esc(R.logoUrl) + '" alt="">' : '<span class="ini-logo mono" aria-hidden="true">' + esc(R.nome.split(/\s+/).map(w => w[0]).join('').slice(0, 2)) + '</span>') +

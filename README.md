@@ -50,12 +50,15 @@ Segurança já incluída:
    - Site do restaurante: http://localhost:3000/ (o mesmo que http://localhost:3000/r/sabor-da-casa)
    - Painel: http://localhost:3000/painel
 
-O restaurante de exemplo é o **Sabor da Casa**: 20 pratos de categorias variadas (pizzas, hambúrgueres, mexicanos, sopas, sobremesas...), com fotos, opções e adicionais, 12 mesas e, com `npm run seed -- --com-historico`, 30 dias de pedidos e avaliações para mostrar os relatórios.
+O `seed` cria **3 demonstrações**, uma de cada tipo de estabelecimento. Com `npm run seed -- --com-historico`, cada uma vem com 30 dias de pedidos e avaliações para mostrar os relatórios.
 
-Logins do exemplo (senha `sabordacasa123`):
-- `dono@sabordacasa.com`
-- `cozinha@sabordacasa.com`
-- `carlos@sabordacasa.com` e `rafa@sabordacasa.com` (entregadores)
+| Demonstração | Tipo | Endereço | Logins (senha) |
+|---|---|---|---|
+| **Sabor da Casa** | Lanchonete (hamburgueria): combos, porções, totem, 12 mesas | `/r/sabor-da-casa` | `dono@`, `cozinha@`, `carlos@` e `rafa@sabordacasa.com` (`sabordacasa123`) |
+| **Gelato & Cia** | Sorveteria: sorvetes de 1 a 3 bolas, açaí com adicionais, milkshakes, totem | `/r/gelato-e-cia` | `dono@`, `balcao@` e `dudu@gelatoecia.com` (`gelatoecia123`) |
+| **Cantina Bella** | Restaurante italiano: 15 mesas com QR, garçom, conta, 10% de serviço, vinhos | `/r/cantina-bella` | `dono@`, `cozinha@` e `leo@cantinabella.com` (`cantinabella123`) |
+
+A página inicial (`/`) mostra o Sabor da Casa. Para mostrar outra demonstração na página inicial, use `SITE_RESTAURANTE=gelato-e-cia` (ou `cantina-bella`). Os links do totem e dos QR Codes de cada uma ficam na área de devs, aba **Mesas, QR e totem**.
 
 **Troque essas senhas antes de usar com clientes reais.**
 
@@ -108,8 +111,19 @@ Registre o domínio (por exemplo no Registro.br) e, no Render, em **Settings > C
 Restaurante não se cadastra sozinho: quem cadastra é a equipe de vocês, pela área de devs (`/admin` → **Novo restaurante**) ou pelo comando abaixo.
 
 ```
-npm run novo-restaurante -- --nome "Pizzaria do Zé" --slug pizzaria-do-ze --email ze@email.com --senha "senhaForte123" --mesas 15
+npm run novo-restaurante -- --nome "Pizzaria do Zé" --slug pizzaria-do-ze --email ze@email.com --senha "senhaForte123" --tipo restaurante --mesas 15
 ```
+
+**Tipo do estabelecimento.** Ao criar, escolha **lanchonete**, **sorveteria** ou **restaurante**. O tipo é só o ponto de partida: já liga as funções certas e cria as categorias iniciais. Depois dá para ligar ou desligar qualquer função na área de devs, e o dono muda as categorias no painel.
+
+| | Lanchonete | Sorveteria | Restaurante |
+|---|---|---|---|
+| Funções ligadas | retirada, delivery, totem, combos | retirada, delivery, totem | mesas com QR, chamar garçom e pedir a conta, retirada, delivery |
+| Funções desligadas | mesas, garçom | mesas, garçom, combos | totem, combos |
+| Categorias iniciais | Lanches, Combos, Porções, Bebidas, Sobremesas | Sorvetes, Açaí, Milkshakes, Picolés, Bebidas | Entradas, Pratos principais, Massas, Bebidas, Sobremesas |
+| Mesas / taxa de serviço | 0 / 0% | 0 / 0% | 10 / 10% |
+
+O tipo pode ser trocado depois em **Funções e situação**. Trocar só muda o tipo; se marcar "Aplicar também as funções do novo tipo", liga e desliga as funções dele. O cardápio e as categorias nunca são alterados.
 
 O dono entra no painel e faz o resto: cadastra produtos, ajusta horário, bairros e taxas, cria logins para a cozinha e os entregadores e imprime os QR Codes.
 

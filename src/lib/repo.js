@@ -13,7 +13,7 @@ function restObj(r, bairros) {
       modo: r.entrega_modo || 'bairro', local: { lat: r.local_lat, lng: r.local_lng, endereco: r.local_endereco || '' }, faixas: (r.faixas_km || []).map(f => ({ ate: +f.ate, taxa: +f.taxa })).sort((a, b) => a.ate - b.ate) },
     agendamento: { ativo: !!r.agendar_ativo, antecedencia: r.agendar_antecedencia || 60, dias: r.agendar_dias == null ? 2 : r.agendar_dias, preparo: r.agendar_preparo || 45 },
     fiscal: Object.assign({}, r.fiscal || {}, { tokenConfigurado: !!r.fiscal_token }), totemToken: r.totem_token || '',
-    ativo: r.ativo, plano: r.plano, observacoes: r.observacoes, motivoSuspensao: r.motivo_suspensao,
+    ativo: r.ativo, plano: r.plano, tipo: r.tipo || 'restaurante', observacoes: r.observacoes, motivoSuspensao: r.motivo_suspensao,
     recursos: recursosDaLinha(r),
     pixAuto: { ativo: !!(r.pix_auto || {}).ativo, provedor: (r.pix_auto || {}).provedor || 'mercadopago', tokenConfigurado: !!r.pix_token, segredoConfigurado: !!r.pix_segredo, chaveWebhook: r.pix_chave_webhook || '' },
     cobranca: Object.assign({ ativa: false, valor: 0, dia: 10, tolerancia: 5 }, r.cobranca || {}), suspensoCobranca: !!r.suspenso_cobranca,

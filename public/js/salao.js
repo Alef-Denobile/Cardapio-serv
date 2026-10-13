@@ -63,7 +63,7 @@ function renderTopo(){
   let av = '';
   if (MESA && !S.mesaOk) av = 'Este QR Code não é válido ou foi trocado. Você pode ver o cardápio; para pedir, chame o garçom.';
   else if (!MESA && !balcao()) av = 'Para pedir, aponte a câmera do celular para o QR Code da sua mesa.';
-  else if (!MESA && podePedir()) av = 'Pedido para retirar no balcão. Está numa mesa? Use o QR Code dela para receber na mesa.';
+  else if (!MESA && podePedir()) av = 'Pedido para retirar no balcão.' + (R.recursos && R.recursos.mesa ? ' Está numa mesa? Use o QR Code dela para receber na mesa.' : ' Chamamos você pelo nome quando ficar pronto.');
   else if (!podePedir()) av = 'Estamos fechados agora. Os pedidos voltam às ' + R.abre + '.';
   $('#aviso').hidden = !av; $('#aviso').textContent = av;
 }

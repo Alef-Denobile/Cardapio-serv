@@ -1,7 +1,8 @@
-// Uso: npm run novo-restaurante -- --nome "Pizzaria do Zé" --slug pizzaria-do-ze --email ze@email.com --senha "umaSenhaForte" [--mesas 15]
+// Uso: npm run novo-restaurante -- --nome "Pizzaria do Zé" --slug pizzaria-do-ze --email ze@email.com --senha "umaSenhaForte" [--tipo lanchonete|sorveteria|restaurante] [--mesas 15]
 const { conectar, sistema, encerrar } = require('../db');
 const { criarRestaurante } = require('../lib/criarRestaurante');
 const config = require('../config');
+const tipos = require('../lib/tipos');
 
 function args() {
   const a = process.argv.slice(2), o = {};
@@ -12,10 +13,11 @@ function args() {
 (async () => {
   const o = args();
   try {
+    if (o.tipo && !tipos.valido(o.tipo)) throw new Error('Tipo inválido. Use lanchonete, sorveteria ou restaurante.');
     await conectar();
-    const { rest } = await sistema(c => criarRestaurante(c, { nome: o.nome, slug: String(o.slug || '').toLowerCase(), email: o.email, senha: o.senha, nomeDono: o.dono || 'Dono', mesas: Number(o.mesas || 10) }));
+    const { rest } = await sistema(c => criarRestaurante(c, { nome: o.nome, slug: String(o.slug || '').toLowerCase(), email: o.email, senha: o.senha, nomeDono: o.dono || 'Dono', tipo: o.tipo, mesas: o.mesas != null ? Number(o.mesas) : tipos.TIPOS[tipos.tipoDe(o.tipo)].mesas }));
     const base = config.urlPublica || `http://localhost:${config.porta}`;
-    console.log(`\nRestaurante criado: ${rest.nome}`);
+    console.log(`\nRestaurante criado: ${rest.nome} (${tipos.TIPOS[rest.tipo].nome.toLowerCase()})`);
     console.log(`Cardápio (delivery): ${base}/r/${rest.slug}`);
     console.log(`Painel: ${base}/painel  (entre com ${o.email})`);
     console.log('Os QR Codes das mesas e o link do totem ficam no painel, aba "Mesas, QR e totem" (o dono pode adicionar mesas; trocar códigos e remover mesas é na área de devs).\n');
