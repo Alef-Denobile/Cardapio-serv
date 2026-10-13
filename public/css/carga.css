@@ -1,0 +1,21 @@
+/* Tela de carregamento: "Carregando" e três barras que crescem e diminuem a partir do meio */
+.carga{position:fixed;inset:0;z-index:9999;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:22px;
+  background:#FBF7F6;color:#1D2142;font:700 20px/1.3 Nunito,system-ui,-apple-system,"Segoe UI",sans-serif;transition:opacity .25s ease,visibility .25s}
+.carga.fora{opacity:0;visibility:hidden}
+.carga-txt{margin:0;letter-spacing:.01em}
+.carga-barras{display:flex;align-items:center;gap:7px;height:44px}
+.carga-barras span{display:block;width:7px;height:44px;border-radius:4px;background:currentColor;transform:scaleY(.22);transform-origin:center;
+  animation:carga-barra 1.3s ease-in-out infinite}
+/* de trás para frente: a terceira começa, depois a segunda, depois a primeira (crescendo e diminuindo nessa ordem) */
+.carga-barras span:nth-child(3){animation-delay:0s}
+.carga-barras span:nth-child(2){animation-delay:.16s}
+.carga-barras span:nth-child(1){animation-delay:.32s}
+@keyframes carga-barra{0%,100%{transform:scaleY(.22)}28%,58%{transform:scaleY(1)}86%{transform:scaleY(.22)}}
+.carga-demora{position:absolute;top:calc(50% + 64px);left:50%;transform:translateX(-50%);width:max-content;margin:0;max-width:min(300px,100% - 32px);padding:0 16px;text-align:center;font-size:14.5px;font-weight:600;opacity:.75}
+.carga-demora[hidden]{display:none}
+@media (prefers-color-scheme:dark){ .carga{background:#131116;color:#F2EEF3} }
+.carga.escuro{background:#14162E;color:#fff}
+@media (prefers-reduced-motion:reduce){
+  .carga-barras span{animation:carga-pulso 1.6s ease-in-out infinite;transform:scaleY(.6)}
+  @keyframes carga-pulso{0%,100%{opacity:.35}50%{opacity:1}}
+}

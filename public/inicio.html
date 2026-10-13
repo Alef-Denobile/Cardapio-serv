@@ -7,12 +7,15 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap">
 <link rel="stylesheet" href="/css/inicio.css">
+<link rel="stylesheet" href="/css/carga.css">
 </head>
 <body>
+<div class="carga escuro" id="carga" role="status" aria-live="polite"><p class="carga-txt">Carregando</p><div class="carga-barras" aria-hidden="true"><span></span><span></span><span></span></div><p class="carga-demora" hidden>Está demorando um pouco mais que o normal. Só mais um instante…</p></div>
+<script src="/js/carga.js" defer></script>
 <main class="ini" id="ini">
   <div class="ini-veu"></div>
   <div class="ini-box">
-    <div id="marca" class="ini-marca"><p class="ini-carr">Carregando…</p></div>
+    <div id="marca" class="ini-marca"><p class="ini-carr" data-carga>Carregando…</p></div>
     <h2 class="ini-pergunta">Como você quer ver o cardápio?</h2>
     <div class="ini-opcoes">
       <a class="ini-op" id="op-online" href="#">

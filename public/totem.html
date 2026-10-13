@@ -8,9 +8,12 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap">
 <link rel="stylesheet" href="/css/totem.css">
+<link rel="stylesheet" href="/css/carga.css">
 </head>
 <body>
-<main id="app" class="totem"><div class="tt-carregando">Carregando…</div></main>
+<div class="carga" id="carga" role="status" aria-live="polite"><p class="carga-txt">Carregando</p><div class="carga-barras" aria-hidden="true"><span></span><span></span><span></span></div><p class="carga-demora" hidden>Está demorando um pouco mais que o normal. Só mais um instante…</p></div>
+<script src="/js/carga.js" defer></script>
+<main id="app" class="totem"><div class="tt-carregando" data-carga>Carregando…</div></main>
 <div id="modal"></div>
 <div class="tt-toast" id="toast" role="status" hidden></div>
 <script src="/js/opcoes.js"></script>

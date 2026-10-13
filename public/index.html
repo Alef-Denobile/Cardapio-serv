@@ -8,8 +8,11 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap">
 <link rel="stylesheet" href="/css/chef.css">
+<link rel="stylesheet" href="/css/carga.css">
 </head>
 <body>
+<div class="carga" id="carga" role="status" aria-live="polite"><p class="carga-txt">Carregando</p><div class="carga-barras" aria-hidden="true"><span></span><span></span><span></span></div><p class="carga-demora" hidden>Está demorando um pouco mais que o normal. Só mais um instante…</p></div>
+<script src="/js/carga.js" defer></script>
 
 
 <header class="top">
@@ -32,7 +35,7 @@
   </div>
 </header>
 
-<main class="wrap" id="app"><p class="carregando">Carregando o cardápio…</p></main>
+<main class="wrap" id="app"><p class="carregando" data-carga>Carregando o cardápio…</p></main>
 
 <footer><div class="wrap"><span id="rodape"></span><span class="rodape-legal"><a href="/termos" id="lk-termos">Termos de uso</a><a href="/privacidade" id="lk-priv">Privacidade</a><a href="/painel">Área do restaurante</a></span></div></footer>
 

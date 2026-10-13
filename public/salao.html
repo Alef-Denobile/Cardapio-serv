@@ -7,13 +7,16 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap">
 <link rel="stylesheet" href="/css/salao.css">
+<link rel="stylesheet" href="/css/carga.css">
 </head>
 <body>
+<div class="carga" id="carga" role="status" aria-live="polite"><p class="carga-txt">Carregando</p><div class="carga-barras" aria-hidden="true"><span></span><span></span><span></span></div><p class="carga-demora" hidden>Está demorando um pouco mais que o normal. Só mais um instante…</p></div>
+<script src="/js/carga.js" defer></script>
 <header class="sl-top" id="topo"></header>
 <div class="sl-aviso" id="aviso" hidden></div>
 <div class="sl-corpo">
   <nav class="sl-cats" id="cats" aria-label="Categorias do cardápio"></nav>
-  <main class="sl-prods" id="prods"><p class="sl-carregando">Carregando o cardápio…</p></main>
+  <main class="sl-prods" id="prods"><p class="sl-carregando" data-carga>Carregando o cardápio…</p></main>
   <aside class="sl-carr" id="carr" aria-label="Seu pedido"></aside>
 </div>
 <div class="sl-fundo" id="fundo" data-act="fechar-carr" hidden></div>
